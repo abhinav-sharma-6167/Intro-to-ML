@@ -1,0 +1,232 @@
+---
+title: "Intro to ML Final Exam"
+author: "Abhinav Sharma"
+date: "7/24/2021"
+output:
+  html_document:
+    df_print: paged
+---
+
+Setup - Loading libraries and setting working directory
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#########################
+##Cleaning Data and EDA##
+#########################
+#Install libraries if not installed, else load them-----------------------------
+ipak <- function(pkg){
+  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if (length(new.pkg)) 
+    install.packages(new.pkg, dependencies = TRUE)
+  sapply(pkg, require, character.only = TRUE)
+}
+# usage
+packages <- c("ggplot2", "ISLR", "DataExplorer", "RColorBrewer", "dplyr", "data.table","rpart","randomForest","xgboost","DescTools","Hmisc","ggcorrplot","MASS","tidyverse","caret","precrec","GGally","corrgram","broom","purrr")
+ipak(packages)
+
+options(scipen=999)
+
+#Set seed and working directory-------------------------------------------------
+set.seed(100)
+setwd("~/Documents/Intro to ML")
+
+theme_custom <- function (text_size=12) { 
+    theme_bw(base_size=text_size, base_family="Avenir") %+replace% 
+        theme(
+            panel.background  = element_blank(),
+            plot.background = element_rect(fill="gray96", colour=NA), 
+            legend.background = element_rect(fill="transparent", colour=NA),
+            legend.key = element_rect(fill="transparent", colour=NA)
+        )
+}
+
+```
+
+### Chapter #2 : Ques 10
+
+#### Part (a)
+```{r}
+suppressMessages(suppressWarnings(attach(Boston)))
+cat("Number of rows and columns are : ",nrow(Boston)," and ",ncol(Boston)," respectively.\n")
+```
+The data represents housing value in suburbs of Boston. Each row is one suburb and each column represents a particular characterstic associated with the particular suburb such as crime rate, taxation, accessibility to highways etc. The last column medv is median value of owner-occupied homes in units of $1000s.
+
+#### Part (b)
+```{r}
+ggpairs(Boston[,c("crim","zn","indus","nox","ptratio","rad","tax","lstat","medv")],progress = F ,aes(alpha=0.6))+theme_custom(text_size =10)+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+We observe accessibility to radial highway (rad) and taxation (tax) have almost similar distribution with a very high positive correlation. Both these variables have some correlation with crime rate (crim) as well. 
+The crime rate (crim) and proportion of residential zone (zn) variables are highly right skewed whereas proportion of non-retail business (indus) is bi-modal.
+
+The scatterplots help us understand relationship of individual variables with median house value (medv) with it having inverse association with crime rate, NOx concentrations (nox), taxation (tax), percent of lower status population (lstat) whereas direct relatioship with proportion of residential zone (zn)
+
+#### Part (c)
+```{r}
+corrgram::corrgram(cor(Boston),upper.panel = panel.shade,lower.panel = NULL)
+
+```
+Above plot shows whether a pair of variable has direct or inverse association. The color of the tile indicated strength of association (correlation)
+
+Observing the top row of the plot we see, crim has strong positive correlation with rad, tax and lstat, moderate positive correlation with indus, nox, age, ptratio. We observe moderate negative association with the variables zn, rm, dis, black and medv.
+
+#### Part (d)
+
+```{r}
+cat("Range of crime rate in Boston suburbs : ", range(crim)," \n\n")
+#Top neighbourhoods with high crime rate
+Boston[order(-crim),][1:10,]
+cat("\nRange of tax rate in Boston suburbs : ", range(tax)," \n\n")
+#Top neighbourhoods with high tax rate
+Boston[order(-tax),][1:10,]
+cat("\nRange of ptratio in Boston suburbs : ", range(ptratio)," \n\n")
+#Top neighbourhoods with high pupil teacher ratio
+Boston[order(-ptratio),][1:10,]
+
+
+```
+We note ranges of the relevant predictors above. While variable ptratio shows some left skew, crim shows very strong right skew indicating we might need some outlier treatment on crim as high values such as 88.97 may impact coefficients of regression and impact interpretation.
+
+#### Part (e)
+```{r}
+table(chas)
+#prop.table(table(chas))
+```
+A total of 35 suburbs (roughly 7%) are bounded by the Charles river.
+
+#### Part (f)
+```{r}
+cat("Median pupil-teacher ratio in the dataset is :", median(ptratio),". \n")
+
+```
+
+#### Part (g)
+```{r}
+
+#Median values by variable
+a = data.frame(sapply(Boston,function(x) round(median(x),2)))
+names(a) <- "ColMedian"
+a$Range_l = sapply(Boston,function(x)  round(range(x)[1],2))
+a$Range_u = sapply(Boston,function(x)  round(range(x)[2],2))
+a
+
+#Suburbs with minimum median value 
+Boston[medv == min(medv),]
+
+```
+The suburbs in row number 399 and 406 have the lowest 'median value' of $5000. We see, compared to dataset medians these suburbs have very high crime rate, higher proportion of non-retail businesses, higher NOx concentration, lesser #rooms, higher distance from radial highways and are highly taxed.
+
+Based on variable distributions and range, the crime rate, lstat and tax rates in these low median value suburbs are at the higher end of their respective distribution. 
+
+
+#### Part (h)
+```{r}
+cat("#Suburbs averaging more than 7 dwellings : ",length(which(rm > 7)),". \n")
+cat("#Suburbs averaging more than 8 dwellings : ",length(which(rm > 8)),". \n")
+
+#Characteristics of suburbs with more than 8 dwellings on average
+b = data.frame(sapply(Boston[rm > 8,] ,function(x) round(mean(x),2)))
+names(b) = "ColMean"
+b
+```
+Suburbs with more than eight dwellings on average have very low crime rate (crim) and high proportion of residential land zones (zn) accompanied with better pupil-teacher ratios (ptratio) and lesser percent of lower status population (lstat)
+
+
+### Chapter #3 : Ques 15
+
+#### Part (a)
+```{r}
+#Running regression by variable
+m1 = broom::tidy(summary(lm(crim~zn)),conf.int=T)
+m2 = broom::tidy(summary(lm(crim~indus)),conf.int=T)
+m3 = broom::tidy(summary(lm(crim~chas)),conf.int=T)
+m4 = broom::tidy(summary(lm(crim~nox)),conf.int=T)
+m5 = broom::tidy(summary(lm(crim~rm)),conf.int=T)
+m6 = broom::tidy(summary(lm(crim~age)),conf.int=T)
+m7 = broom::tidy(summary(lm(crim~dis)),conf.int=T)
+m8 = broom::tidy(summary(lm(crim~rad)),conf.int=T)
+m9 = broom::tidy(summary(lm(crim~tax)),conf.int=T)
+m10 = broom::tidy(summary(lm(crim~ptratio)),conf.int=T)
+m11 = broom::tidy(summary(lm(crim~black)),conf.int=T)
+m12 = broom::tidy(summary(lm(crim~lstat)),conf.int=T)
+m13 = broom::tidy(summary(lm(crim~medv)),conf.int=T)
+
+coef_df <- as.data.frame(rbind(m1[2,],m2[2,],m3[2,],m4[2,],m5[2,],m6[2,],m7[2,],m8[2,],m9[2,],m10[2,],m11[2,],m12[2,],m13[2,]))
+coef_df
+```
+All variables except for chas (bound by Charles river) return significant coefficients for predicting crime rate.
+```{r}
+ggplot(data = Boston,aes(x = lstat, y = crim)) + scale_x_continuous(name="lstat", limits=range(lstat)) +
+scale_y_continuous(name="crim", limits=range(crim)) +
+scale_linetype(name="s") + geom_point(color="salmon",size=2.1,alpha=0.35)+theme_custom() + 
+  geom_abline(intercept = m12$estimate[1] , slope = m12$estimate[2] , color = "black" , size = 0.6 , alpha = 0.8 ) +
+  geom_abline(intercept = m12$conf.low[1] , slope = m12$conf.low[2] , color = "purple" , size = 0.5 , linetype = 2 , alpha = 0.8) +
+  geom_abline(intercept = m12$conf.high[1] , slope = m12$conf.high[2] , color = "blue" , size = 0.5 , linetype = 4 , alpha = 0.8)
+```
+
+Above plot shows three regression lines - one with OLS estimates (black) and two others with (slope,intercept) as the low and high confidence (95% CIs) of respective betas (blue for upper CI and purple for lower CI).
+
+As we can see from the plot,we have atleast 95% confidence that the slope of the 'true' regression line is positive given all three lines have positive slope. This proves aforementioned statistically ignificant association.
+
+
+#### Part (b)
+```{r}
+lm.model <- lm(crim ~ ., data = Boston)
+summary(lm.model)
+
+```
+We can reject the null hypothesis (beta = 0) for the variables zn, dis, rad, black and medv.
+
+#### Part (c)
+```{r}
+both_coef <- data.frame(Simple = round(coef_df$estimate,2), Multiple = round(lm.model$coefficients[2:length(lm.model$coefficients)],2)  )
+both_coef
+```
+We observe directionality of coefficients changes for zn, indus, nox, rm, ptratio when all variables are considered together.
+
+```{r}
+ggplot(data = both_coef,aes(x = Simple, y = Multiple)) + geom_point(color="red",fill="black",size=2.5,alpha=0.5)+theme_custom()
+```
+Coefficient for nox sees most deviation, changing from 31 in simple lr to -10 in multiple regression. These changes are due to the fact that multiple regression provides coefficients under the condition that all remaining covariates are held constant whereas simple linear regression only takes in consideration the correlation between the dependent and independent variable.
+
+
+#### Part (d)
+```{r}
+
+
+```
+
+
+```{r}
+lm.model <- lm(crim ~ ., data = Boston)
+summary(lm.model)
+
+```
+
+
+```{r}
+lm.model <- lm(crim ~ ., data = Boston)
+summary(lm.model)
+
+```
+
+
+```{r}
+lm.model <- lm(crim ~ ., data = Boston)
+summary(lm.model)
+
+```
+
+
+```{r}
+lm.model <- lm(crim ~ ., data = Boston)
+summary(lm.model)
+
+```
+
+
+```{r}
+lm.model <- lm(crim ~ ., data = Boston)
+summary(lm.model)
+
+```
+
