@@ -23,7 +23,7 @@ ipak <- function(pkg){
   sapply(pkg, require, character.only = TRUE)
 }
 # usage
-packages <- c("ggplot2", "ISLR", "DataExplorer", "RColorBrewer", "dplyr", "data.table","rpart","randomForest","xgboost","DescTools","Hmisc","ggcorrplot","MASS","tidyverse","caret","precrec","GGally","corrgram","broom","purrr","ISLR","glmnet","pls")
+packages <- c("ggplot2", "ISLR", "DataExplorer", "RColorBrewer", "dplyr", "data.table","rpart","randomForest","xgboost","DescTools","Hmisc","ggcorrplot","MASS","tidyverse","caret","precrec","GGally","corrgram","broom","purrr","ISLR","glmnet","pls","leaps","ROCR","precrec","kknn","rpart","rpart.plot","gbm")
 ipak(packages)
 
 options(scipen=999)
@@ -508,22 +508,6 @@ x.test <- as.matrix(test[names(test)[!names(test) %in% c("crim")]])
 y.train <- train$crim
 y.test <- test$crim
 
-set.seed(100)
-
-linearModel <- lm(crim~. , data = Boston)
-summary(linearModel)
-
-
-predcrim <- predict(linearModel , test)
-
-#Evaluate deviation from actual y
-errorcrim = test$crim - predcrim
-RMSE_error = sqrt(mean((test$crim - predcrim)^2))
-
-cat("Test Root mean squared error is : ",RMSE_error , "\n")
-
-cat("Train RMSE is :",sqrt(mean((train$crim - predict(linearModel , train))^2))," \n")
-
 #Creating independent and dependent variables in required classes
 x.train <- as.matrix(train[names(train)[!names(train) %in% c("crim")]])
 x.test <- as.matrix(test[names(test)[!names(test) %in% c("crim")]])
@@ -597,22 +581,544 @@ RMSE_error_PCR = sqrt(mean((errorcrim_PCR)^2))
 
 cat("Test Root mean squared error for PCR  model is : ", RMSE_error_PCR , "\n")
 
+#using max number of variables based on regfit
+regFitModel <- regsubsets(crim~. , data = Boston , nvmax=15, method ="forward")
 
+plot(regFitModel)$adjr2
 
-data.table(Model = c("LR","Ridge","Lasso","PCR") , RMSE = c(RMSE_error,RMSE_error_Ridge,RMSE_error_Lasso,RMSE_error_PCR))
+#Adjusted R-sq for model subset -- Model removing chas, rm, age and tax
+summary(regFitModel)$adjr2[ (which(summary(regFitModel)$adjr2 == max(summary(regFitModel)$adjr2)))]
+
+set.seed(100)
+
+reglinearModel <- lm(crim~zn+indus+nox+dis+rad+ptratio+black+lstat+medv , data = Boston)
+summary(reglinearModel)
+
+predcrim <- predict(reglinearModel , test)
+
+#Evaluate deviation from actual y
+errorcrim = test$crim - predcrim
+RMSE_error = sqrt(mean((test$crim - predcrim)^2))
+
+cat("Test Root mean squared error is : ",RMSE_error , "\n")
+
+data.table(Model = c("Subsetting","Ridge","Lasso","PCR") , RMSE = c(RMSE_error,RMSE_error_Ridge,RMSE_error_Lasso,RMSE_error_PCR))
 ```
+We see best subsetting offers us lowest test set RMSE. From the percent deviation optimization plots of ridge and Lasso, we see that the variance does not drastically change for different values of lambda meaning both L1-L2 regularizations are not able to easily generalize the regression model. Now given Principal component regression is also not able to get better test RMSE, it suggests the actual subset of columns is better able to model unseen data than orthogonal principal components attempting to explain most variance in data.
+
+This could probably be due to relatively high correlation of target variables with x. The orthogonal PCs might be missing out on some correlation and essentially have slightly more information loss.
+
+Hence, despite lasso and PCR being good tools, in theory to weed out unnecessary information and generate stable robust models, in this case, I'd prefer the 'best subset' model as validated by test RMSEs above.
+
+
+#### Part (b)
+
+It might be interesting to see how PCLS - using supervised transformation of pricipal components explains variance in the data and if it is able to beat the Best subset RMSE benchmark.
+```{r}
+
+set.seed(100)
+
+pls.fit2 = plsr(formula = crim~. , data=Boston, scale=TRUE ,validation ="CV")
+
+validationplot(pls.fit2 ,val.type="MSEP")
+
+pls.pred2 = predict(pls.fit2 ,test ,ncomp =5)
+
+#Evaluate deviation from actual y
+errorApps_PLS = test$crim - pls.pred2
+RMSE_error_PLS = sqrt(mean((errorApps_PLS)^2))
+
+cat("Test Root mean squared error for PLS model is : ", RMSE_error_PLS , "\n")
+```
+
+Very interesting to observe, the supervised transformations PLS model is conducting upon the principal components is able to perform better than the previous best, 'best subset' model. The improvement is although highly sensitive to the number of principal components we avail. If we use lesser number of principal components we essentially risk losing out on the information contained in the variables. On the contrary, if we assume more principal components we have the risk of our model being not generalized enough for test data.
+
+#### Part (c)
+
+The two models that perform best on the hold-out sample are the best subset model and the Partial least squares based on Principal Components. Both variables do not leverage all the variables and the reduction in number of variables helps reduce excess variance in the model, thereby providing robust predictions.
+
+The Best subset method drops out chas, rm, age and tax. Chas is not significant in linear model as well implying the variable might not have the signals to aid in increasing predictive power. Rm almost follow a gaussian distribution. All variables rm, age and tax may have been removed since their effect might have been captured through other correlated variables and adding them ends up over-complicating the model. Similarly, PLS model gives similar accuracy out-of-sample with 6 principal components, maybe reducing confounding effect of independent variables with each other. Compared to the 9-variable best-subset it is a simpler model but loses on model interpretability.
+
+To summarize, if model interpretation is a necessity, the preffered model would be Best subset model vs if accuracy on out-of-sample data is key priority for our model, the PLS model holds best promise of a simpler, robust model.
+
+
+### Chapter #4 : Ques 10
+
+#### Part (a)
+
+
+```{r}
+df <- ISLR::Weekly
+
+#Descriptive stats and univariate plots
+DescTools::Desc(df)
+
+```
+```{r}
+
+#Coerce Direction into numeric
+df$Direction <- as.numeric(df$Direction) - 1
+#Now 0 indicates down and 1 indicates Up
+
+#Visualize correlation relationships
+corrgram::corrgram(cor(df),upper.panel = panel.shade,lower.panel = NULL)
+
+```
+```{r}
+
+#Pair plots to understand scatterplot distributions
+ggpairs(df,progress = F ,aes(alpha=0.6))+theme_custom(text_size =10)+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+
+While univariate plots for all lag variables seem very much the same in terms of the shape of their distributions, we see there is no overall correlation amidst them. Volume variable is highly correlated with Year which makes sense since there wouldn't be too much variation in terms of total volume traded in a given year. Good years should have higher volumes traded, whereas recession periods should have lesser volumes traded.
+
+Direction is highly correlated with the variable Today given Direction (current week up or down) is derived from the variable Today (current week percentage return)
+
+Volume seems to be consistently increasing with the years!
 
 #### Part (b)
 
 ```{r}
+set.seed(100)
 
+logitModel = glm(Direction ~ Lag1+Lag2+Lag3+Lag4+Lag5+Volume, data=df, family=binomial)
+summary(logitModel)
 
 ```
+
+In addition to the Intercept only the Lag2 variable (% Return of last 2 weeks) gives out significant co-efficient.
 
 #### Part (c)
 
 ```{r}
 
+PredAll = predict(logitModel, newdata=df[,!colnames(df) == "Direction"], type="response")
+confusionMatrix(as.factor(as.numeric(PredAll>=0.5)),reference = as.factor(df$Direction))
+
+#Zero represents Down, 1 represents Up
+logit_pred_obj <- prediction(PredAll,df$Direction)
+auc_logit_all <- performance(logit_pred_obj,"auc")
+
+#AUC of the model
+auc_logit_all@y.values[[1]][1]
+
+#AUC ROC and PR Curve
+precrec_obj_test <- evalmod(scores = PredAll, labels = df$Direction)
+autoplot(precrec_obj_test)
+
+logit_pr_all <- performance(logit_pred_obj,"rec","prec")
+pr_df= data.frame(logit_pr_all@x.values,logit_pr_all@y.values)
+names(pr_df) <- c("Precision", "Recall")
+pr_df$F1 = 2*pr_df$Precision * pr_df$Recall / (pr_df$Precision + pr_df$Recall)
+
+
+
+```
+
+We see not a great model with an AUC 0.55, implying the model is not able to segregate the two classes apart from each other as in evitable from the ROC curve. The model with 0.5 cutoff predicts majority datapoints as ones with Upper Direction giving out high amount of False Positives, thereby a very low precision despite good enough recall.
+
+Since $Accuracy = \frac{(TP+TN)}{(TP+TN+FP+FN)}$ we have overall Accuracy as 0.5611. We also know that Precision is fraction of total predictions that landed correctly. With $Precision = \frac{TP}{(TP+FP)}$ we avail precision as 557/(557+430) = 0.5643. As stated earlier, this low precision is since our models predicts majority of observations as Up, thereby false positives or Type I error is high.
+
+We also see recall availed as $Recall = \frac{TP}{TP+FN}$ thereby dependent upon False Negatives or Type II error. Recall = Specificity = 0.92 which is good but at a very high price of bad precision.
+
+
+#### Part (d)
+```{r}
+#Create out train and test
+train_df = df[(df$Year<2009),]
+
+test_df = df[(!df$Year<2009),]
+
+set.seed(100)
+
+# Logistic regression on train
+logitModel_Lag2 = glm(Direction ~ Lag2, data=train_df, family=binomial)
+
+# Predictions on test
+probLags2 = predict(logitModel_Lag2,test_df[,!colnames(test_df) == "Direction"], type="response")
+
+confusionMatrix(as.factor(as.numeric(probLags2>=0.5)),reference =as.factor(test_df$Direction))
+
+#Zero represents Down, 1 represents Up
+logit_pred_obj2 <- prediction(probLags2,test_df$Direction)
+auc_logit_all2 <- performance(logit_pred_obj2,"auc")
+
+#AUC of the model
+auc_logit_all2@y.values[[1]][1]
+
+#AUC ROC and PR Curve
+precrec_obj_test2 <- evalmod(scores = probLags2, labels = test_df$Direction)
+autoplot(precrec_obj_test2)
+
+logit_pr_all <- performance(logit_pred_obj2,"rec","prec")
+pr_df= data.frame(logit_pr_all@x.values,logit_pr_all@y.values)
+names(pr_df) <- c("Precision", "Recall")
+pr_df$F1 = 2*pr_df$Precision * pr_df$Recall / (pr_df$Precision + pr_df$Recall)
+
+
+```
+The problem of overpredicting the class Up persists with overall accuracy = 0.625, recall = 0.918 but a low precision of 0.622
+
+The ROC curve is intersecting the x = y line implying that the model often performs worse than a random classifier implying there is too much uncertainty associated with the predictions of the model at different probability cutoffs with cetain time when model performs worse than a random classifier. This is interesting given the 'statistically significant' variable Lags2 is not sufficient in itself or does not have adequate patterns to be able to segregate the target classes on it's own when tested on the out-of-sample data.
+
+#### Part (g)
+
+```{r}
+
+# Predictions for K=1
+set.seed(100)
+
+knnModel = kknn(Direction~Year+Lag1+Lag2+Lag3+Lag4+Lag5+Volume, train_df, test_df, k=1)
+
+#Confusion matrix for the test set
+confusionMatrix(as.factor(knnModel$fitted.values),reference = as.factor(test_df$Direction))
+
+#AUC ROC and PR Curve
+#precrec_obj_test3 <- evalmod(scores = knnModel$fitted.values, labels = test_df$Direction)
+#autoplot(precrec_obj_test3)
+
+```
+
+We observe a decrease in the accuracy and the model is not being able to pick some signals up relevant to segregating Upwards vs Downwards. Accuracy = 0.4615, Recall = 0.3770 and Precision drops as well due to reduction in False positives at 0.5609
+
+#### Part (h)
+
+KNN with k = 1 (1st nearest neighbour) performs better than the logistic regression on the out-of-sample data.
+
+This is expected as the most dominant predictor of a time series data, especially in trading data would be the nearest trends surrounding the market. For example, if the market is going down for few consistent weeks, the knn model will be able to pick up on this method while searching for the 'neighborhood'
+
+The only catch with knn, would be inability to predict sharp turns from 'Down to Up' or 'Up to Down' since historical data would always recommend the most occuring trend for particular values of Lags, especially for low values of k and ideally we shouldn't be using future data to predict the past as it'll be an obvious leakage.
+
+
+#### Part (i)
+
+
+```{r warning=FALSE}
+#Exploring stepwise models to see effect of addition of variables
+set.seed(100)
+
+
+step.model <- glm(Direction ~ ., data=train_df[!names(train_df) %in% c("Today")], family=binomial) %>% stepAIC(trace = T)
+cols <- names(coef(step.model))
+summary(step.model)
+
+PredT = predict(step.model, newdata=test_df[!names(test_df) %in% c("Today")], type="response")
+confusionMatrix(reference = as.factor(test_df$Direction), as.factor(as.numeric(PredT > 0.5)))
+
+
+```
+
+We avail an accuracy of 0.5769 with a precision of 0.5955 and recall of 0.8688.
+
+Only Lag1 and Lag2 variables are kept in stepwise regression. But Lag1 and Lag2 despite being uncorrelated might have a dependency upon each other. It could be worthwhile to explore the interaction effects associated with them.
+
+```{r}
+
+#Exploring interaction effects
+set.seed(100)
+
+interactionModel <- glm(Direction ~ Lag1 + Lag2 + Lag1:Lag2, data=train_df[!names(train_df) %in% c("Today")], family=binomial) 
+cols <- names(coef(interactionModel))
+summary(interactionModel)
+
+PredT2 = predict(interactionModel, newdata=test_df[!names(test_df) %in% c("Today")], type="response")
+confusionMatrix(reference = as.factor(test_df$Direction), as.factor(as.numeric(PredT2 > 0.5)))
+
+
+```
+
+We see no change in either the predictive power of any significant p-value for any interaction effects in Lag variables. Essentially this means, that of all the information given, Lag1 and Lag2 have the most useful information while their effects are independent of the value of the other variable.
+
+To further improve predictive power, we might need to try other transformations or algorithms.
+
+```{r}
+
+#Model non-linearity of variables
+set.seed(100)
+
+nonLinModel <- glm(Direction ~ Lag1 + Lag2 + I(Lag1^2) + I(Lag2^2), data=train_df[!names(train_df) %in% c("Today")], family=binomial) 
+cols <- names(coef(nonLinModel))
+summary(nonLinModel)
+
+PredT3 = predict(nonLinModel, newdata=test_df[!names(test_df) %in% c("Today")], type="response")
+confusionMatrix(reference = as.factor(test_df$Direction), as.factor(as.numeric(PredT3 > 0.5)))
+
+
+```
+Again, we do not see any improvement by including quadratic transformations of pertinent Lag values. Our hope id with KNN and better Ks, the model is also able to map the changes from Up to Down and vice versa better than the k=1 model. Testing out different k-values :
+
+```{r}
+#KNN with k = 5, 10, 20, 50, 100
+
+set.seed(100)
+
+knnModel5 = kknn(Direction~Year+Lag1+Lag2+Lag3+Lag4+Lag5+Volume, train_df, test_df, k=5)
+#Confusion matrix for the test set
+confusionMatrix(as.factor(as.numeric(knnModel5$fitted.values > 0.5)),reference = as.factor(test_df$Direction))
+
+set.seed(100)
+
+knnModel10 = kknn(Direction~Year+Lag1+Lag2+Lag3+Lag4+Lag5+Volume, train_df, test_df, k=10)
+#Confusion matrix for the test set
+confusionMatrix(as.factor(as.numeric(knnModel10$fitted.values > 0.5)),reference = as.factor(test_df$Direction))
+
+set.seed(100)
+
+knnModel20 = kknn(Direction~Year+Lag1+Lag2+Lag3+Lag4+Lag5+Volume, train_df, test_df, k=20)
+#Confusion matrix for the test set
+confusionMatrix(as.factor(as.numeric(knnModel20$fitted.values > 0.5)),reference = as.factor(test_df$Direction))
+
+set.seed(100)
+
+knnModel50 = kknn(Direction~Year+Lag1+Lag2+Lag3+Lag4+Lag5+Volume, train_df, test_df, k=50)
+#Confusion matrix for the test set
+confusionMatrix(as.factor(as.numeric(knnModel50$fitted.values > 0.5)),reference = as.factor(test_df$Direction))
+
+
+set.seed(100)
+
+knnModel100 = kknn(Direction~Year+Lag1+Lag2+Lag3+Lag4+Lag5+Volume, train_df, test_df, k=100)
+#Confusion matrix for the test set
+confusionMatrix(as.factor(as.numeric(knnModel100$fitted.values > 0.5)),reference = as.factor(test_df$Direction))
+
+
+
+```
+
+With k = 100 we are able to achieve relatively higher accuracy = 0.5673 with low precision of 0.5975 and recall of 0.8033
+
+We're able to push for marginally higher Precision compared to logistic regression but overall accuracy and recall are still lacking!
+
+### Chapter #8 : Ques 8
+
+#### Part (a)
+
+```{r}
+cs <- ISLR::Carseats
+
+#Reproducibility
+set.seed(100)
+
+# 75% of the sample size
+smp_size <- floor(0.75 * nrow(cs))
+train_ind <- sample(seq_len(nrow(cs)), size = smp_size)
+
+train <- cs[train_ind, ]
+test <- cs[-train_ind, ]
+
+cat("Number of rows of train and test are :" , nrow(train) , " and " , nrow(test)," respectively.\n" )
+
+```
+
+
+
+#### Part (b)
+
+```{r}
+tree1 = rpart(Sales ~ . , data = train , method = "anova")
+tree1
+
+rpart.plot::rpart.plot(tree1, box.palette = "Greens")
+```
+
+From the tree we can interpret, characteristics conducive to sales are having Good Shelveloc, being more priced
+higher as well and greater Age and marketing spends. A combination of where these characterstics intersect offers much better value for Sales.
+
+
+```{r}
+
+predTree <- predict(tree1 , test)
+cat("Mean Squared Error on the test set is :", mean((predTree - test$Sales)^2))
+
+```
+
+
+#### Part (c)
+
+```{r}
+
+printcp(tree1)
+plotcp(tree1)
+
+```
+The printcp and plotcp methods in rpart cross-validate and return the cross-validated relative error with respect to the number of splits and complexity parameter, along with the recommendation (dashed horizontal line) of which minimum error or which split and complexity parameter would work out best for a given tree. 
+
+Here ideal cp is 0.02-0.038 with 5-10 splits!
+
+
+```{r}
+#using cp = 0.038
+tree2 = rpart(Sales ~ . , data = train , method = "anova" , cp = 0.02)
+
+rpart.plot::rpart.plot(tree2, box.palette = "Greens")
+
+
+predTree2 <- predict(tree2 , test)
+cat("Mean Squared Error of pruned tree on the test set is :", mean((predTree2 - test$Sales)^2))
+
+```
+Using a pruned tree with 10 leaf nodes at a complexity parameter of 0.02, we're able to slightly reduce the test set MSE from 4.565 to 4.335. However if we keep on pruning, after certain time, we might underfit the model and MSE might rise again.
+
+
+#### Part (d)
+
+```{r}
+
+# Bagging => RF with m = ncol
+set.seed(100)
+
+bagged10 = randomForest(Sales~., data=train, mtry=10, importance=T)
+
+#importance Matrix
+importance(bagged10)
+varImpPlot(bagged10)
+
+baggedPred10 = predict(bagged10,newdata = test)
+cat("Mean Squared Error of RF with m = 10 on the test set is :",mean((baggedPred10-test$Sales)^2),"\n")
+
+
+```
+Similar to the rpart plots, top features are ShelveLoc, Price and CompPrice followed by Age and advertising that were key to certain child nodes in the rpart tree!
+
+We see RF is able to considerably reduce the out-of-sample MSE (2.17) on account of bagging multiple samples with replacement. 
+
+```{r}
+
+# RandomForest (m = 2)
+set.seed(100)
+
+bagged2 = randomForest(Sales~., data=train, mtry=2, importance=T)
+
+#importance Matrix
+importance(bagged2)
+varImpPlot(bagged2)
+
+baggedPred2 = predict(bagged2,newdata = test)
+cat("Mean Squared Error of RF with m = 2 on the test set is :",mean((baggedPred2-test$Sales)^2),"\n")
+
+
+
+
+# RandomForest (m = 4)
+set.seed(100)
+
+bagged4 = randomForest(Sales~., data=train, mtry=4, importance=T)
+
+#importance Matrix
+importance(bagged4)
+varImpPlot(bagged4)
+
+baggedPred4 = predict(bagged4,newdata = test)
+cat("Mean Squared Error of RF with m = 4 on the test set is :",mean((baggedPred4-test$Sales)^2),"\n")
+
+
+
+
+# RandomForest (m = 6)
+set.seed(100)
+
+bagged6 = randomForest(Sales~., data=train, mtry=6, importance=T)
+
+#importance Matrix
+importance(bagged6)
+varImpPlot(bagged6)
+
+baggedPred6 = predict(bagged6,newdata = test)
+cat("Mean Squared Error of RF with m = 6 on the test set is :",mean((baggedPred6-test$Sales)^2),"\n")
+
+
+
+# RandomForest (m = 8)
+set.seed(100)
+
+bagged = randomForest(Sales~., data=train, mtry=8, importance=T)
+
+#importance Matrix
+importance(bagged)
+varImpPlot(bagged)
+
+baggedPred = predict(bagged,newdata = test)
+cat("Mean Squared Error of RF with m = 8 on the test set is :",mean((baggedPred-test$Sales)^2),"\n")
+
+```
+
+The top 2 variables are constant for all values of m, viz. Shelveloc and Price in order. The next three important variables are Price, Age and Advertising as seen above, but the order of importance changes with different values of m.
+
+MSEs for different m are comparable but none of the m values are able to beat the bagging benchmark test MSE.
+
+As m keeps on increasing, the test MSE in this case keeps on decreasing.
+
+### Chapter #8 : Ques 11
+
+#### Part (a)
+
+```{r}
+carv <- ISLR::Caravan
+
+carv$Purchase <- as.numeric(carv$Purchase)-1
+#Now No is represented by 0 and Yes by 1
+
+carv.train <- carv[1:1000,]
+carv.test <- carv[1001:nrow(carv),]
+
+cat("Number of rows in train and test are : ",nrow(carv.train)," and ",nrow(carv.test)," respectively.\n")
+```
+
+
+#### Part (b)
+
+```{r warning=FALSE}
+
+set.seed(100)
+
+#Boosting
+boostingModel = gbm(Purchase~., data=carv.train,distribution = "bernoulli",n.trees = 1000, shrinkage = 0.01)
+summary(boostingModel,cBars = 25,
+  method = relative.influence, # also can use permutation.test.gbm
+  las = 1)
+```
+
+Few top variables explaining dependent variable best are :
+PPERSAUT > MKOOPKLA > MOPLHOOG > PBRAND > MBERMIDD at the given hyperparameters
+
+
+#### Part (c)
+
+
+```{r}
+# Predcited probalbilites on test
+predCarv = predict(boostingModel,  carv.test[!names(carv.test) %in% c("Purchase")], n.trees = 1000,type="response")
+
+# Confusion matrix
+confusionMatrix(reference = as.factor(carv.test$Purchase), as.factor(as.numeric(predCarv >= 0.2)))
+
+```
+
+Proportion of people predicted to purchase who actually made one, equal model precision where $Precision = \frac{TP}{(TP+FP)}$ = $\frac{34}{(34+120)}$ = 0.2207
+
+Even though overall accuracy is high, we see very low precision and recall metrics for this model. This is predominantly due to the high class imbalance present in the data. In addition to this, the amount of data used in train is very less and might not have captured enough signal to be able to identify class 1 from class 0. Even if the model recommends majority of observations as predicted purchase, the model hits decent accuracy but low values of precision and recall suggest model hasn't learnt segregation of categories well enough.
+
+Despite this, a random guess would be correct 348/(348+5474) = 5.9% times whereas using boosting it's 22%. Hence it's 4x improvement over a random classifier.
+
+```{r warning=FALSE}
+#Benchmarking with logistic regression
+logitModelCarv = glm(Purchase~., data = carv.train, family = binomial)
+logitProbs = predict(logitModelCarv, carv.test, type="response")
+
+# Confusion matrix
+confusionMatrix(reference = as.factor(carv.test$Purchase), as.factor(as.numeric(logitProbs >= 0.2)))
+
+
+```
+
+We see logistic model offers a better Recall of 0.20 which is a lift from 0.11 of the boosting model. However, the precision further drops since we're recommending more number of observations herein and making a lot more of Flase positives or type I errors. Precision drops from 22% to 14%, meaning still a 2.2x increase in predictability than a random choice.
+
+
+
+
+
+```{r}
 
 ```
 
