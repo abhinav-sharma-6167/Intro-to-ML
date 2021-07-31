@@ -2,12 +2,14 @@
 title: "Intro to ML Final Exam"
 author: "Abhinav Sharma"
 date: "7/24/2021"
+always_allow_html: true
 output:
+  pdf_document: 
   html_document:
     df_print: paged
 ---
 
-Setup - Loading libraries and setting working directory
+Setup - Loading libraries and setting working directory. Setting up custom ggplot theme for all plotting purposes.
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 #########################
@@ -21,7 +23,7 @@ ipak <- function(pkg){
   sapply(pkg, require, character.only = TRUE)
 }
 # usage
-packages <- c("ggplot2", "ISLR", "DataExplorer", "RColorBrewer", "dplyr", "data.table","rpart","randomForest","xgboost","DescTools","Hmisc","ggcorrplot","MASS","tidyverse","caret","precrec","GGally","corrgram","broom","purrr")
+packages <- c("ggplot2", "ISLR", "DataExplorer", "RColorBrewer", "dplyr", "data.table","rpart","randomForest","xgboost","DescTools","Hmisc","ggcorrplot","MASS","tidyverse","caret","precrec","GGally","corrgram","broom","purrr","ISLR","glmnet","pls")
 ipak(packages)
 
 options(scipen=999)
@@ -29,9 +31,9 @@ options(scipen=999)
 #Set seed and working directory-------------------------------------------------
 set.seed(100)
 setwd("~/Documents/Intro to ML")
-
+#, base_family="Avenir"
 theme_custom <- function (text_size=12) { 
-    theme_bw(base_size=text_size, base_family="Avenir") %+replace% 
+    theme_bw(base_size=text_size) %+replace% 
         theme(
             panel.background  = element_blank(),
             plot.background = element_rect(fill="gray96", colour=NA), 
@@ -42,9 +44,13 @@ theme_custom <- function (text_size=12) {
 
 ```
 
+
 ### Chapter #2 : Ques 10
 
+
 #### Part (a)
+
+
 ```{r}
 suppressMessages(suppressWarnings(attach(Boston)))
 cat("Number of rows and columns are : ",nrow(Boston)," and ",ncol(Boston)," respectively.\n")
@@ -52,81 +58,120 @@ cat("Number of rows and columns are : ",nrow(Boston)," and ",ncol(Boston)," resp
 The data represents housing value in suburbs of Boston. Each row is one suburb and each column represents a particular characterstic associated with the particular suburb such as crime rate, taxation, accessibility to highways etc. The last column medv is median value of owner-occupied homes in units of $1000s.
 
 #### Part (b)
+
+
 ```{r}
 ggpairs(Boston[,c("crim","zn","indus","nox","ptratio","rad","tax","lstat","medv")],progress = F ,aes(alpha=0.6))+theme_custom(text_size =10)+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 ```
+
+
 We observe accessibility to radial highway (rad) and taxation (tax) have almost similar distribution with a very high positive correlation. Both these variables have some correlation with crime rate (crim) as well. 
 The crime rate (crim) and proportion of residential zone (zn) variables are highly right skewed whereas proportion of non-retail business (indus) is bi-modal.
 
 The scatterplots help us understand relationship of individual variables with median house value (medv) with it having inverse association with crime rate, NOx concentrations (nox), taxation (tax), percent of lower status population (lstat) whereas direct relatioship with proportion of residential zone (zn)
 
 #### Part (c)
+
+
 ```{r}
+#Generate correlation matrix
+cor(Boston)
+
+#Visualize correlation relationships
 corrgram::corrgram(cor(Boston),upper.panel = panel.shade,lower.panel = NULL)
 
 ```
+
+
 Above plot shows whether a pair of variable has direct or inverse association. The color of the tile indicated strength of association (correlation)
 
 Observing the top row of the plot we see, crim has strong positive correlation with rad, tax and lstat, moderate positive correlation with indus, nox, age, ptratio. We observe moderate negative association with the variables zn, rm, dis, black and medv.
 
 #### Part (d)
 
-```{r}
-cat("Range of crime rate in Boston suburbs : ", range(crim)," \n\n")
-#Top neighbourhoods with high crime rate
-Boston[order(-crim),][1:10,]
-cat("\nRange of tax rate in Boston suburbs : ", range(tax)," \n\n")
-#Top neighbourhoods with high tax rate
-Boston[order(-tax),][1:10,]
-cat("\nRange of ptratio in Boston suburbs : ", range(ptratio)," \n\n")
-#Top neighbourhoods with high pupil teacher ratio
-Boston[order(-ptratio),][1:10,]
 
+
+```{r}
+cat("#Range of crime rate in Boston suburbs : ", range(crim)," \n\n")
+
+cat("\nRange of tax rate in Boston suburbs : ", range(tax)," \n\n")
+
+cat("\nRange of ptratio in Boston suburbs : ", range(ptratio)," \n\n")
 
 ```
-We note ranges of the relevant predictors above. While variable ptratio shows some left skew, crim shows very strong right skew indicating we might need some outlier treatment on crim as high values such as 88.97 may impact coefficients of regression and impact interpretation.
+
+
+```{r}
+#Crim variable outliers
+ggplot(Boston, aes(x=crim)) + geom_boxplot()+theme_custom()
+
+#Tax rate variable outliers
+ggplot(Boston, aes(x=tax)) + geom_boxplot()+theme_custom()
+
+#Ptratio variable outliers
+ggplot(Boston, aes(x=ptratio)) + geom_boxplot()+theme_custom()
+
+```
+
+
+
+We note ranges of the relevant predictors above. Crim shows outliers with higher than (mean+2sd) while ptratio shows outliers with lower values lower than (mean-2sd) No suburbs have particularly high values.
+No outliers for tax variable.
+
+While variable ptratio shows some left skew, crim shows very strong right skew indicating we might need some outlier treatment on crim as high values such as 88.97 may impact coefficients of regression and impact interpretation.
 
 #### Part (e)
+
+
 ```{r}
 table(chas)
 #prop.table(table(chas))
 ```
+
 A total of 35 suburbs (roughly 7%) are bounded by the Charles river.
 
 #### Part (f)
+
+
 ```{r}
 cat("Median pupil-teacher ratio in the dataset is :", median(ptratio),". \n")
 
 ```
 
 #### Part (g)
+
+
 ```{r}
 
 #Median values by variable
-a = data.frame(sapply(Boston,function(x) round(median(x),2)))
-names(a) <- "ColMedian"
-a$Range_l = sapply(Boston,function(x)  round(range(x)[1],2))
-a$Range_u = sapply(Boston,function(x)  round(range(x)[2],2))
-a
+Med_df = data.frame(sapply(Boston,function(x) round(median(x),2)))
+names(Med_df) <- "ColMedian"
+Med_df$Range_l = sapply(Boston,function(x)  round(range(x)[1],2))
+Med_df$Range_u = sapply(Boston,function(x)  round(range(x)[2],2))
+Med_df
 
 #Suburbs with minimum median value 
 Boston[medv == min(medv),]
 
 ```
+
+
 The suburbs in row number 399 and 406 have the lowest 'median value' of $5000. We see, compared to dataset medians these suburbs have very high crime rate, higher proportion of non-retail businesses, higher NOx concentration, lesser #rooms, higher distance from radial highways and are highly taxed.
 
 Based on variable distributions and range, the crime rate, lstat and tax rates in these low median value suburbs are at the higher end of their respective distribution. 
 
 
 #### Part (h)
+
+
 ```{r}
 cat("#Suburbs averaging more than 7 dwellings : ",length(which(rm > 7)),". \n")
 cat("#Suburbs averaging more than 8 dwellings : ",length(which(rm > 8)),". \n")
 
 #Characteristics of suburbs with more than 8 dwellings on average
-b = data.frame(sapply(Boston[rm > 8,] ,function(x) round(mean(x),2)))
-names(b) = "ColMean"
-b
+Sub_8 = data.frame(sapply(Boston[rm > 8,] ,function(x) round(mean(x),2)))
+names(Sub_8) = "ColMean"
+Sub_8
 ```
 Suburbs with more than eight dwellings on average have very low crime rate (crim) and high proportion of residential land zones (zn) accompanied with better pupil-teacher ratios (ptratio) and lesser percent of lower status population (lstat)
 
@@ -134,38 +179,51 @@ Suburbs with more than eight dwellings on average have very low crime rate (crim
 ### Chapter #3 : Ques 15
 
 #### Part (a)
+
+
 ```{r}
 #Running regression by variable
-m1 = broom::tidy(summary(lm(crim~zn)),conf.int=T)
-m2 = broom::tidy(summary(lm(crim~indus)),conf.int=T)
-m3 = broom::tidy(summary(lm(crim~chas)),conf.int=T)
-m4 = broom::tidy(summary(lm(crim~nox)),conf.int=T)
-m5 = broom::tidy(summary(lm(crim~rm)),conf.int=T)
-m6 = broom::tidy(summary(lm(crim~age)),conf.int=T)
-m7 = broom::tidy(summary(lm(crim~dis)),conf.int=T)
-m8 = broom::tidy(summary(lm(crim~rad)),conf.int=T)
-m9 = broom::tidy(summary(lm(crim~tax)),conf.int=T)
-m10 = broom::tidy(summary(lm(crim~ptratio)),conf.int=T)
-m11 = broom::tidy(summary(lm(crim~black)),conf.int=T)
-m12 = broom::tidy(summary(lm(crim~lstat)),conf.int=T)
-m13 = broom::tidy(summary(lm(crim~medv)),conf.int=T)
+m1 = broom::tidy(summary(lm(crim~zn, data = Boston)),conf.int=T)
+m2 = broom::tidy(summary(lm(crim~indus, data = Boston)),conf.int=T)
+m3 = broom::tidy(summary(lm(crim~chas, data = Boston)),conf.int=T)
+m4 = broom::tidy(summary(lm(crim~nox, data = Boston)),conf.int=T)
+m5 = broom::tidy(summary(lm(crim~rm, data = Boston)),conf.int=T)
+m6 = broom::tidy(summary(lm(crim~age, data = Boston)),conf.int=T)
+m7 = broom::tidy(summary(lm(crim~dis, data = Boston)),conf.int=T)
+m8 = broom::tidy(summary(lm(crim~rad, data = Boston)),conf.int=T)
+m9 = broom::tidy(summary(lm(crim~tax, data = Boston)),conf.int=T)
+m10 = broom::tidy(summary(lm(crim~ptratio, data = Boston)),conf.int=T)
+m11 = broom::tidy(summary(lm(crim~black, data = Boston)),conf.int=T)
+m12 = broom::tidy(summary(lm(crim~lstat, data = Boston)),conf.int=T)
+m13 = broom::tidy(summary(lm(crim~medv, data = Boston)),conf.int=T)
 
 coef_df <- as.data.frame(rbind(m1[2,],m2[2,],m3[2,],m4[2,],m5[2,],m6[2,],m7[2,],m8[2,],m9[2,],m10[2,],m11[2,],m12[2,],m13[2,]))
+coef_df[!names(coef_df) %in% c("term")] <- sapply(coef_df[!names(coef_df) %in% c("term")] , function(x) round(x,2))
 coef_df
 ```
-All variables except for chas (bound by Charles river) return significant coefficients for predicting crime rate.
-```{r}
-ggplot(data = Boston,aes(x = lstat, y = crim)) + scale_x_continuous(name="lstat", limits=range(lstat)) +
-scale_y_continuous(name="crim", limits=range(crim)) +
-scale_linetype(name="s") + geom_point(color="salmon",size=2.1,alpha=0.35)+theme_custom() + 
-  geom_abline(intercept = m12$estimate[1] , slope = m12$estimate[2] , color = "black" , size = 0.6 , alpha = 0.8 ) +
-  geom_abline(intercept = m12$conf.low[1] , slope = m12$conf.low[2] , color = "purple" , size = 0.5 , linetype = 2 , alpha = 0.8) +
-  geom_abline(intercept = m12$conf.high[1] , slope = m12$conf.high[2] , color = "blue" , size = 0.5 , linetype = 4 , alpha = 0.8)
+
+
+All variables except for chas (bound by Charles river) return significant coefficients for predicting crime rate. Variables zn, rm, dis returns negative slope, whereas indus, nox, age, rad, tax and ptratio return significant positive betas. Variables rad and tax return highest absolute values of t-statistic implying lower p-values and greater confidence on the betas.
+
+```{r results='hide'}
+#ggplot(data = Boston,aes(x = lstat, y = crim)) + scale_x_continuous(name="lstat", limits=range(lstat)) +
+#scale_y_continuous(name="crim", limits=range(crim)) +
+#scale_linetype(name="s") + geom_point(color="salmon",size=2.1,alpha=0.35)+theme_custom() + 
+#geom_smooth(method = "lm",color="blue",linetype=4, size = 0.65)
+
+plotFunction <- function(varname1){            
+  plot(suppressMessages(suppressWarnings(ggplot(Boston, aes_string(x=varname1, y="crim")) + geom_point(color="salmon",size=2.1,alpha=0.35)+theme_custom() + 
+geom_smooth(method = "lm",color="blue",linetype=4, size = 0.65))))
+}    
+
+list_plots <- sapply(names(Boston)[!names(Boston) %in% c("crim")], plotFunction)
 ```
 
-Above plot shows three regression lines - one with OLS estimates (black) and two others with (slope,intercept) as the low and high confidence (95% CIs) of respective betas (blue for upper CI and purple for lower CI).
+Above plot shows regression lines with respect to each variable and crim - blue one with OLS estimates and band of grey indicating confidence interval. 
 
-As we can see from the plot,we have atleast 95% confidence that the slope of the 'true' regression line is positive given all three lines have positive slope. This proves aforementioned statistically ignificant association.
+As we can see from the plot,we have atleast 95% confidence that the slope of the regression line is non-zero for all regression line except chas which has upper and lower confidence bands with positive and negative slopes respectively implying we can't satisfactorily say that slope isn't zero. 
+
+This proves aforementioned statistically ignificant association of all remaining variables.
 
 
 #### Part (b)
@@ -174,13 +232,15 @@ lm.model <- lm(crim ~ ., data = Boston)
 summary(lm.model)
 
 ```
-We can reject the null hypothesis (beta = 0) for the variables zn, dis, rad, black and medv.
+
+We can reject the null hypothesis (beta = 0) for the variables zn, dis, rad, black and medv. We observe some betas may have changed directionality from their initial results in simple regression.
 
 #### Part (c)
 ```{r}
 both_coef <- data.frame(Simple = round(coef_df$estimate,2), Multiple = round(lm.model$coefficients[2:length(lm.model$coefficients)],2)  )
 both_coef
 ```
+
 We observe directionality of coefficients changes for zn, indus, nox, rm, ptratio when all variables are considered together.
 
 ```{r}
@@ -190,43 +250,369 @@ Coefficient for nox sees most deviation, changing from 31 in simple lr to -10 in
 
 
 #### Part (d)
+```{r warning=FALSE}
+#To check for non-linearity -- Approach 1 -- Plot
+suppressMessages(ggplot(data = Boston,aes(x = zn, y = crim)) + geom_point(color="salmon",fill="black",size=1.5,alpha=0.65)+theme_custom()+ylim(c(0,10))+
+  geom_smooth(method = "lm",se=F,color="black",size=0.8)+geom_smooth(method = "loess",se=F,color="blue",linetype=2,size=0.65)+geom_smooth(method = "gam",se=F,color="darkgreen",linetype=4,size=0.65)) #Only crim values less than 10 for better visual
+
+
+```
+Plotting variables and fitting local polynomial regression fitting or generalized additive models we see there is some non-linearity present in relationship of crim with zn.
+
+```{r}
+#Approach 2 -- Pattern in residuals
+mod_summ <- summary(lm(crim~zn))
+plot(zn, mod_summ$residuals  , ylab="Residuals", col="salmon")
+
+```
+We see non-linearity in residual vs independent variable plot meaning linear model has not been able to extract the non-linear aspect of the relationship between crim and zn.
+
+```{r}
+#Approach 3 -- Running polynomial regression
+#Running regression by variable
+p1 = broom::tidy(summary(lm(crim~poly(zn,3))),conf.int=T)
+p2 = broom::tidy(summary(lm(crim~poly(indus,3))),conf.int=T)
+p3 = broom::tidy(summary(lm(crim~poly(chas,1))),conf.int=T)
+p4 = broom::tidy(summary(lm(crim~poly(nox,3))),conf.int=T)
+p5 = broom::tidy(summary(lm(crim~poly(rm,3))),conf.int=T)
+p6 = broom::tidy(summary(lm(crim~poly(age,3))),conf.int=T)
+p7 = broom::tidy(summary(lm(crim~poly(dis,3))),conf.int=T)
+p8 = broom::tidy(summary(lm(crim~poly(rad,3))),conf.int=T)
+p9 = broom::tidy(summary(lm(crim~poly(tax,3))),conf.int=T)
+p10 = broom::tidy(summary(lm(crim~poly(ptratio,3))),conf.int=T)
+p11 = broom::tidy(summary(lm(crim~poly(black,3))),conf.int=T)
+p12 = broom::tidy(summary(lm(crim~poly(lstat,3))),conf.int=T)
+p13 = broom::tidy(summary(lm(crim~poly(medv,3))),conf.int=T)
+
+coef_poly_df <- as.data.frame(rbind(p1[2:4,],p2[2:4,],p3[2,],p4[2:4,],p5[2:4,],p6[2:4,],p7[2:4,],p8[2:4,],p9[2:4,],p10[2:4,],p11[2:4,],p12[2:4,],p13[2:4,]))
+
+coef_poly_df[!names(coef_poly_df) %in% c("term")] <- sapply(coef_poly_df[!names(coef_poly_df) %in% c("term")] , function(x) round(x,4))
+
+coef_poly_df
+```
+### Chapter #6 : Ques 9
+
+#### Part (a)
+
+```{r}
+#Load data
+college <- ISLR::College
+
+#sapply(train,class)
+#Since we have only one factor, we coerce it to numeric
+college$Private <- as.numeric(as.factor(college$Private)) - 1
+
+#One represents Private = 'Yes' now
+
+
+#Reproducibility
+set.seed(100)
+
+# 75% of the sample size
+smp_size <- floor(0.75 * nrow(college))
+train_ind <- sample(seq_len(nrow(college)), size = smp_size)
+
+train <- college[train_ind, ]
+test <- college[-train_ind, ]
+
+#Dimensions of train and test
+dim(train) ; dim(test)
+
+#Number of colleges overlap in train and test
+length(which(rownames(train) %in% rownames(test)))
+
+#Scale original data
+#college_scaled = as.data.frame(sapply(college,scale))
+
+#Create copies of train test with scaled data
+#train_scaled <- college_scaled[train_ind, ]
+#test_scaled <- college_scaled[-train_ind, ]
+
+```
+
+Train test split made with train set having 75% of datapoints and remaining in test set. Dependent variable is Apps. We do not see any overlap in train and test rownames.
+
+#### Part (b)
+
+```{r}
+
+set.seed(100)
+
+linearModel <- lm(Apps~. , data = college)
+summary(linearModel)
+
+
+predApps <- predict(linearModel , test)
+
+#Evaluate deviation from actual y
+errorApps = test$Apps - predApps
+RMSE_error = sqrt(mean((test$Apps - predApps)^2))
+
+cat("Test Root mean squared error is : ",RMSE_error , "\n")
+
+cat("Train RMSE is :",sqrt(mean((train$Apps - predict(linearModel , train))^2))," \n")
+
+```
+
+We see train RMSE is bit higher than test set RMSE.
+
+#### Part (c)
+
+```{r}
+
+#Creating independent and dependent variables in required classes
+x.train <- as.matrix(train[names(train)[!names(train) %in% c("Apps")]])
+x.test <- as.matrix(test[names(test)[!names(test) %in% c("Apps")]])
+
+y.train <- train$Apps
+y.test <- test$Apps
+
+#Using unscaled data since glmnet implementation standardizes data internally as stated on https://www.statology.org/ridge-regression-in-r/
+
+set.seed(100)
+
+cv_Ridge <- cv.glmnet(x = x.train, y = y.train , family = "gaussian" , alpha=0)
+
+plot(cv_Ridge)
+
+```
+```{r}
+set.seed(100)
+
+cv_Ridge_min <- glmnet(x = x.train, y = y.train , family = "gaussian", lambda = cv_Ridge$lambda.min)
+
+
+predApps_Ridge <- predict(cv_Ridge_min , x.test)
+
+#Evaluate deviation from actual y
+errorApps_Ridge = test$Apps - predApps_Ridge
+RMSE_error_Ridge = sqrt(mean((errorApps_Ridge)^2))
+
+cat("Test Root mean squared error for Ridge regularized model is : ",RMSE_error_Ridge , "\n")
+
+```
+
+Ridge regression reduces test set RMSE marginally.
+
+
+#### Part (d)
+
+```{r}
+set.seed(100)
+
+cv_Lasso <- cv.glmnet(x = x.train, y = y.train , family = "gaussian" , alpha=1)
+
+plot(cv_Lasso)
+
+cv_Lasso_min <- glmnet(x = x.train, y = y.train , family = "gaussian", lambda = cv_Lasso$lambda.min)
+
+
+predApps_Lasso <- predict(cv_Lasso_min , x.test)
+
+#Evaluate deviation from actual y
+errorApps_Lasso = test$Apps - predApps_Lasso
+RMSE_error_Lasso = sqrt(mean((errorApps_Lasso)^2))
+
+cat("Test Root mean squared error for Lasso regularized model is : ",RMSE_error_Lasso , "\n")
+
+coef_df_Lasso = data.frame(VarName = rownames(as.matrix(coef(cv_Lasso_min)))  , as.matrix(coef(cv_Lasso_min)) )
+
+names(coef_df_Lasso)[2] <- "Beta"
+coef_df_Lasso$Beta <- round(coef_df_Lasso$Beta,2)
+
+coef_df_Lasso[coef_df_Lasso$Beta != 0,]
+```
+Lasso regression further reduces test set RMSE a little bit.
+
+#### Part (e)
+
+```{r}
+# PCR model by cross validation
+set.seed(100)
+
+pcr.fit = pls::pcr(formula = Apps~. , data=train, scale=TRUE ,validation ="CV")
+
+summary(pcr.fit)
+
+validationplot(pcr.fit ,val.type="MSEP")
+
+```
+Given the mean squared error of prediction saturates at number of components = 9, we choose M = 9 for our final model.
+
+```{r}
+set.seed(100)
+
+pcr.fit2 = pls::pcr(formula = Apps~. , data=train, scale=TRUE ,ncomp= 9 )
+
+pls.pred = predict (pcr.fit2 , test)
+
+#Evaluate deviation from actual y
+errorApps_PCR = test$Apps - pls.pred
+RMSE_error_PCR = sqrt(mean((errorApps_PCR)^2))
+
+cat("Test Root mean squared error for PCR  model is : ", RMSE_error_PCR , "\n")
+
+```
+
+Even upon choosing M via cross-validation, PCR model gives worse RMSE than Ridge or Lasso.
+
+#### Part (f)
+```{r}
+set.seed(100)
+
+pls.fit2 = plsr(formula = Apps~. , data=train, scale=TRUE ,validation ="CV")
+
+validationplot(pls.fit2 ,val.type="MSEP")
+
+pls.pred2 = predict(pls.fit2 ,test ,ncomp =5)
+
+#Evaluate deviation from actual y
+errorApps_PLS = test$Apps - pls.pred2
+RMSE_error_PLS = sqrt(mean((errorApps_PLS)^2))
+
+cat("Test Root mean squared error for PLS model is : ", RMSE_error_PLS , "\n")
+```
+
+PLS model performs better than pricipal component regression but is still not able to beat RMSE scores from Ridge and Lasso on test set.
+
+
+#### Part (g)
+
+```{r}
+
+data.table(Model = c("LR","Ridge","Lasso","PCR","PLS") , RMSE = c(RMSE_error,RMSE_error_Ridge,RMSE_error_Lasso,RMSE_error_PCR, RMSE_error_PLS))
+
+```
+
+We see Lasso despite omitting out few variables gives us a better RMSE than all other models. Ridge regularization also gives improvement over the linear regression RMSE. Interestingly, there's quite a difference between RMSE values of PCR and PLS despite both of them being based on dimensionality reduction while greedily maximing variance. This implies that the supervised transformations that PLS does post PCA offer good predictive power in estimating dependent variable.
+
+### Chapter #6 : Ques 11
+
+#### Part (a)
+
+```{r}
+#Reproducibility
+set.seed(100)
+
+# 75% of the sample size
+smp_size <- floor(0.75 * nrow(Boston))
+train_ind <- sample(seq_len(nrow(Boston)), size = smp_size)
+
+train <- Boston[train_ind, ]
+test <- Boston[-train_ind, ]
+
+#Creating independent and dependent variables in required classes
+x.train <- as.matrix(train[names(train)[!names(train) %in% c("crim")]])
+x.test <- as.matrix(test[names(test)[!names(test) %in% c("crim")]])
+
+y.train <- train$crim
+y.test <- test$crim
+
+set.seed(100)
+
+linearModel <- lm(crim~. , data = Boston)
+summary(linearModel)
+
+
+predcrim <- predict(linearModel , test)
+
+#Evaluate deviation from actual y
+errorcrim = test$crim - predcrim
+RMSE_error = sqrt(mean((test$crim - predcrim)^2))
+
+cat("Test Root mean squared error is : ",RMSE_error , "\n")
+
+cat("Train RMSE is :",sqrt(mean((train$crim - predict(linearModel , train))^2))," \n")
+
+#Creating independent and dependent variables in required classes
+x.train <- as.matrix(train[names(train)[!names(train) %in% c("crim")]])
+x.test <- as.matrix(test[names(test)[!names(test) %in% c("crim")]])
+
+y.train <- train$crim
+y.test <- test$crim
+
+#Using unscaled data since glmnet implementation standardizes data internally as stated on https://www.statology.org/ridge-regression-in-r/
+
+set.seed(100)
+
+cv_Ridge <- cv.glmnet(x = x.train, y = y.train , family = "gaussian" , alpha=0)
+
+plot(cv_Ridge)
+
+set.seed(100)
+
+cv_Ridge_min <- glmnet(x = x.train, y = y.train , family = "gaussian", lambda = cv_Ridge$lambda.min)
+
+
+predcrim_Ridge <- predict(cv_Ridge_min , x.test)
+
+#Evaluate deviation from actual y
+errorcrim_Ridge = test$crim - predcrim_Ridge
+RMSE_error_Ridge = sqrt(mean((errorcrim_Ridge)^2))
+
+cat("Test Root mean squared error for Ridge regularized model is : ",RMSE_error_Ridge , "\n")
+
+set.seed(100)
+
+cv_Lasso <- cv.glmnet(x = x.train, y = y.train , family = "gaussian" , alpha=1)
+
+plot(cv_Lasso)
+
+cv_Lasso_min <- glmnet(x = x.train, y = y.train , family = "gaussian", lambda = cv_Lasso$lambda.min)
+
+
+predcrim_Lasso <- predict(cv_Lasso_min , x.test)
+
+#Evaluate deviation from actual y
+errorcrim_Lasso = test$crim - predcrim_Lasso
+RMSE_error_Lasso = sqrt(mean((errorcrim_Lasso)^2))
+
+cat("Test Root mean squared error for Lasso regularized model is : ",RMSE_error_Lasso , "\n")
+
+coef_df_Lasso = data.frame(VarName = rownames(as.matrix(coef(cv_Lasso_min)))  , as.matrix(coef(cv_Lasso_min)) )
+
+names(coef_df_Lasso)[2] <- "Beta"
+coef_df_Lasso$Beta <- round(coef_df_Lasso$Beta,2)
+
+coef_df_Lasso[coef_df_Lasso$Beta != 0,]
+
+# PCR model by cross validation
+set.seed(100)
+
+pcr.fit = pls::pcr(formula = crim~. , data=train, scale=TRUE ,validation ="CV")
+
+summary(pcr.fit)
+
+validationplot(pcr.fit ,val.type="MSEP")
+
+set.seed(100)
+
+pcr.fit2 = pls::pcr(formula = crim~. , data=train, scale=TRUE ,ncomp= 9 )
+
+pls.pred = predict (pcr.fit2 , test)
+
+#Evaluate deviation from actual y
+errorcrim_PCR = test$crim - pls.pred
+RMSE_error_PCR = sqrt(mean((errorcrim_PCR)^2))
+
+cat("Test Root mean squared error for PCR  model is : ", RMSE_error_PCR , "\n")
+
+
+
+data.table(Model = c("LR","Ridge","Lasso","PCR") , RMSE = c(RMSE_error,RMSE_error_Ridge,RMSE_error_Lasso,RMSE_error_PCR))
+```
+
+#### Part (b)
+
 ```{r}
 
 
 ```
 
+#### Part (c)
 
 ```{r}
-lm.model <- lm(crim ~ ., data = Boston)
-summary(lm.model)
 
-```
-
-
-```{r}
-lm.model <- lm(crim ~ ., data = Boston)
-summary(lm.model)
-
-```
-
-
-```{r}
-lm.model <- lm(crim ~ ., data = Boston)
-summary(lm.model)
-
-```
-
-
-```{r}
-lm.model <- lm(crim ~ ., data = Boston)
-summary(lm.model)
-
-```
-
-
-```{r}
-lm.model <- lm(crim ~ ., data = Boston)
-summary(lm.model)
 
 ```
 
