@@ -23,7 +23,7 @@ ipak <- function(pkg){
   sapply(pkg, require, character.only = TRUE)
 }
 # usage
-packages <- c("ggplot2", "ISLR", "DataExplorer", "RColorBrewer", "dplyr", "data.table","rpart","randomForest","xgboost","DescTools","Hmisc","ggcorrplot","MASS","tidyverse","caret","precrec","GGally","corrgram","broom","purrr","ISLR","glmnet","pls","leaps","ROCR","precrec","kknn","rpart","rpart.plot","gbm")
+packages <- c("ggplot2", "ISLR", "DataExplorer", "RColorBrewer", "dplyr", "data.table","rpart","randomForest","xgboost","DescTools","Hmisc","ggcorrplot","MASS","tidyverse","caret","precrec","GGally","corrgram","broom","purrr","ISLR","glmnet","pls","leaps","ROCR","precrec","kknn","rpart","rpart.plot","gbm", "nnet","caret","neuralnet")
 ipak(packages)
 
 options(scipen=999)
@@ -1115,10 +1115,211 @@ confusionMatrix(reference = as.factor(carv.test$Purchase), as.factor(as.numeric(
 We see logistic model offers a better Recall of 0.20 which is a lift from 0.11 of the boosting model. However, the precision further drops since we're recommending more number of observations herein and making a lot more of Flase positives or type I errors. Precision drops from 22% to 14%, meaning still a 2.2x increase in predictability than a random choice.
 
 
+### Problem #1 : Beauty Pays!
 
+#### Part (a)
+```{r}
+#Read in the data
+beauty <- data.table::fread("BeautyData.csv")
+
+#Quick summary stats
+DescTools::Desc(beauty)
+
+```
+```{r}
+#Modelling beauty variable into course ratings
+lmModel_beauty <- lm(data = beauty , formula = CourseEvals ~ BeautyScore)
+summary(lmModel_beauty)
+```
+Univariate linear regression points towards very strong positive association between beauty metric and the course evaluations. However beauty alone does not explain much of the variance of CourseEvals since we see a poor R-sq of 0.1657. This means we need to have a multivariate analysis of other determinant variables that might also be predictive of CourseEvals and gauge the coefficient of BeautyScore in such a setting, keeping all other determinants constant.
+
+```{r}
+#Modelling all variables into course ratings
+lmModel_beautyall <- lm(data = beauty , formula = CourseEvals ~ .)
+summary(lmModel_beautyall)
+
+
+```
+
+With the multivariate analysis we see all variables have significant effect on CourseEvals with beauty being one of them as well. The directionality of beauty variable co-efficient does not change sign means given other determinants such as gender, non-english, lower and tenuretrack kept constant, beauty score still has significant association with course evaluations.
+
+#### Part (b)
+
+While even the multivariate analysis gives out significant betas for Beauty Score, since we can't attribute association to causation we can really not say anything about whether higher beauty score is causing higher course evaluations leading to discrimination. It may very well happen that some confounding variable unused in the analysis is the reason for the strong direct relationship with BeautyScore. 
+
+Case in point, it could be that the calculation of beauty score leverages how consistent or structured people are in their lifestyle and maintaining their appearance is only a part of their behaviour in general. Regression model using such a metric while shows direct relationship with beauty score, in reality could mean direct relationship with having structured / disciplined lifestyle.
+
+This is where Dr. Hamermesh is suggesting that disentangling this relationship as being driven by positive confounding factors such as productivity or taking variable at face value and assuming it to be driven by discrimination based on beauty perception is probably impossible! 
+
+
+### Problem #2 : Housing Price Structure
+
+```{r}
+housing <- read.csv("MidCity.csv", header = T)
+
+#Quick data summary
+summary(housing)
+
+```
+
+#### Part (1)
+
+```{r}
+#Multivariate analysis to model price with respect to other variables
+
+#remove identifier column
+housing$Home <- NULL
+
+#Brick = 1 indicates Brick houses
+housing$Brick <- as.factor(housing$Brick)
+
+#Convert Neighborhood into factor
+housing$Nbhd <- as.factor(housing$Nbhd)
+
+linearModel_housing <- lm(Price ~ . , data = housing)
+summary(linearModel_housing)
+
+```
+
+We see keeping all other co-variates constant, we see significant direct relationship between price of a house and it being a brick-house, owing to p-value way below alpha (0.05)
+
+
+#### Part (2)
+
+Since Neighbourhood goes into the model matrix as a factor with all it's levels one hot encoded, we see the model does not revert out a beta corresponding to the last level of the factor. This means, given all things constant, say if the average price of an apartment in neighborhood 3 is $100k, we can use the betas of other neighbourhoods to compare prices with neighborhood 3. Since beta for neighborhood 1 and 2 are both ~ -\$20 to -\$22k, we can say the average prices in those neighborhoods, given other covariates kept constant would be approximately \$80k and \$78k respectively.
+
+Thus there is a premium associated with houses in neighborhood 3.
+
+To summarize brick houses are approximately \$17k more expensive whereas neighbourhood 3 houses are roughly \$20k to\$22k more expensive.
+
+Please note - we're assuming linear relationship between price and number of rooms and bathrooms based on intuitive sense check despite the number of unique values in these variables is not too high.
+
+#### Part (3)
+
+```{r}
+#To check for premium for both bricked and neighborhood 3 house, we explore the interaction effects of the two variables
+
+linearModel_housing <- lm(Price ~ Offers + SqFt + Bedrooms + Bathrooms + Brick:Nbhd , data = housing)
+summary(linearModel_housing)
+
+
+```
+
+From the above summary table, we see co-efficients for all combinations of the neighborhood and whether it's a brick house are negative and significant at significance level alpha = 0.05. The level of interest is bricked house in neighborhood 3, since it's the last category in our model matrix, it gets dropped off and the predicted price for this would be equal to the intercept value given all other covariates are zero.
+
+Since all other combinations are having negative significant betas, we can access that the there is a premium associated with Neighborhood 3 brick houses. 
+
+On avaerage all other houses are priced approximately -\$33k less than brick houses in neighborhood 3. Note this is not equal to the sum of differences we availed from LR without interactions (~\$37k to \$39k) and this is because the effect size of one variable say neighborhood depends upon the value of other variable - house being brick house.
+
+Hence there's a premium on neighborhood 3 brick house, but there's no extra premium as in it's not greater than the summation of premiums from linear model without interactions.
+
+#### Part (4)
+
+By definition in given problems, neighborhoods 1 and 2 are both traditional house settings. Seeing coefficients of these neighborhoods in previous regression result, we see betas for neighborhood 1 and 2 are pretty much similar (even though each category has significant p-value)
+So, while there is definite mathematical difference between betas for the two neighborhoods, visual inspection suggests the extent of this difference is not too different compared to other parameters such as house being brick-house or not.
+
+Hence we experiment with a model with neighborhoods 1 and 2 combined and accept it if it reduces the adjusted R-sq. This will help us avail a simpler model more robust to correctly predict the unseen test data.
+
+```{r}
+
+housing$NewNbhd <- ifelse(housing$Nbhd == 3,1,0)
+
+linearModel_housing_new <- lm(Price ~  Offers + SqFt + Bedrooms + Bathrooms + Brick:NewNbhd , data = housing)
+summary(linearModel_housing_new)
+```
+
+Given we do not see any improvement in adjusted R sq. and coefficients of neighborhood 1 and 2 were significant, it does not make sense to combine them into one category!
+
+### Problem #3 : What causes what??
+
+#### Part (1)
+
+Different cities will have different co-efficients for their relationship of crime with respect to number of police and could potentially lead to averaging out the individual effects in case multiple cities are taken at once. For example, consider city 1 where regression line slope suggests that crime increases by certain rate with respect number of police. On the contrary city2 could have a regression line slope suggesting crime decreasing by the same rate with respect to the number of police. In case we plot these two cities data together, it results in cancellation of individual effects and the overall regression line for the two cities might result out with slop zero suggesting no relationship, which is definitely fallacious given our premise.
+
+
+#### Part (2)
+
+Given the issue is quantifying crime with respect to police is that wherever there is crime, only those places would be followed up by higher police personnel. It wasn't feasible to avail a comparison set of measuring crime rate with different number of police personnel while keeping all other variables constant since you wouldn't expect a large police personnel to be in an area without reasons other than crime.
+
+Researchers at UPenn first isolated a controlled demographic (geography of Washington DC) first where such a case would be possible. Given DC is considered high risk area to terror attacks, they have excess police personnel whenever there is an orange alert in the city. This means researchers are able to compare crime rates on days of normal vs increased police personnel in the city while keeping any possible confounding variables constant. This data would then be helpful in isolating the effect of police personnel on crime, given all other covariates such as geography, people on the street were checked to be almost constant.
+
+In Table 2, we quantify this when we see daily crime in DC decreased by roughly 7.3 in when modeled while not controlling for metro activity. Whereas it decreased by 6 when controlled for Metro ridership as well. The second model provides more information for predicting crime rate and increases R-square (goodness of fit) from 0.14 to 0.17. The low values of R-sq also suggest that while excess police due to high alert and absence of people from metro ridership both have a significant impact in reducing the crime rate, these do not fully explain the crime rate owing to such low amounts of variance being explained by these variables.
+
+#### Part (3)
+
+The hypothesis behind metro ridership was that a higher amount of police personnel would discourage public outings, which in turn would discourage any criminals to target public in their criminal activities. Public targets being available might become the cause of difference in crime on normal vs excess police days. Owing to this it becomes essential to control for the people on the streets or 'access to criminal activity'
+
+The researchers took the metro ridership as a proxy for people travelling/in public and being prone to criminal activity and validated that this activity was the same for normal vs excess police days. This approach ensures, if all other possible reasons that could have caused a change in crime rate are kept the same, whatever increase or decrease we see in crime rate on excess police days can be directly attributed to excess police presence!
+
+In the table, the variable undergoes Log transformation to curtail the amount of deviations.
+
+
+#### Part (4)
+
+The table 4 gives out coefficients with High alert (Excess police personnel) interacting with the concerned demographic. We see two interaction terms in the coefficient table that say while effect of High alert is significant and is reducing crime rate in District 1, we can't say anything concrete about the High alert impact on crime rate in Other districts, given the associated p-val is not sufficiently low enough. 
+
+Adding one more covariate despite not giving out significant p-value reduces the absolute value of betas for the variables returning significant coefficients. The directionality of the coefficients in maintained as in the previous table.
+
+
+### Problem #4 : Neural networks
+
+```{r}
+set.seed(100)
+
+data <- Boston
+
+library(neuralnet)
+f <- as.formula(paste("crim ~", paste(names(train_scale)[!names(train_scale) %in% "crim"], collapse = " + ")))
+
+set.seed(100)
+cv.error <- NULL
+k <- 10
+
+library(plyr) 
+pbar <- create_progress_bar('text')
+pbar$init(k)
+
+for(i in 1:k){
+  
+    maxs <- apply(data, 2, max) 
+    mins <- apply(data, 2, min)
+    
+    scaled <- as.data.frame(scale(data, center = mins, scale = maxs - mins))
+
+    indexTrain <- sample(1:nrow(data),round(0.75*nrow(data)))
+    train.cv <- scaled[indexTrain,]
+    test.cv <- scaled[-indexTrain,]
+    
+    nn <- neuralnet(f,data=train.cv,hidden=c(6),linear.output=T)
+    plot(nn)
+    pr.nn <- compute(nn,test.cv[!names(test.cv) %in% crim])
+    print("dd")
+    pr.nn <- pr.nn$net.result*(max(data$medv)-min(data$medv))+min(data$medv)
+    
+    test.cv.r <- (test.cv$medv)*(max(data$medv)-min(data$medv))+min(data$medv)
+    
+    cv.error[i] <- sum((test.cv.r - pr.nn)^2)/nrow(test.cv)
+    
+    pbar$step()
+}
+
+mean(cv.error)
+
+boxplot(cv.error,xlab='MSE CV',col='cyan',
+        border='blue',names='CV error (MSE)',
+        main='CV error (MSE) for NN',horizontal=TRUE)
+
+```
 
 
 ```{r}
 
+
+
 ```
 
+```{r}
+
+
+
+```
