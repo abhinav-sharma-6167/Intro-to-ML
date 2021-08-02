@@ -9,9 +9,11 @@ output:
     df_print: paged
 ---
 
-Setup - Loading libraries and setting working directory. Setting up custom ggplot theme for all plotting purposes.
+Setup - Loading libraries and setting working directory. Key libraries include ggplot2, plotly, Hmisc, corrgram and DescTools for exploration; data.table, dplyr, broom for data wrangling; rpart, gbm, nnet, caret, kknn, glmnet, radiant.model and randomForest for modelling and ROCR, precrec for performance metrics and assessment.
+
+Setting up custom ggplot theme for all plotting purposes. 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE , comment=NA)
 #########################
 ##Cleaning Data and EDA##
 #########################
@@ -23,7 +25,7 @@ ipak <- function(pkg){
   sapply(pkg, require, character.only = TRUE)
 }
 # usage
-packages <- c("ggplot2", "ISLR", "DataExplorer", "RColorBrewer", "dplyr", "data.table","rpart","randomForest","xgboost","DescTools","Hmisc","ggcorrplot","MASS","tidyverse","caret","precrec","GGally","corrgram","broom","purrr","ISLR","glmnet","pls","leaps","ROCR","precrec","kknn","rpart","rpart.plot","gbm", "nnet","caret","neuralnet")
+packages <- c("ggplot2", "ISLR", "DataExplorer", "RColorBrewer", "dplyr", "data.table","rpart","randomForest","xgboost","DescTools","Hmisc","ggcorrplot","MASS","tidyverse","caret","precrec","GGally","corrgram","broom","purrr","glmnet","pls","leaps","ROCR","precrec","kknn","rpart","rpart.plot","gbm", "nnet","caret","neuralnet","radiant","radiant.model")
 ipak(packages)
 
 options(scipen=999)
@@ -31,7 +33,8 @@ options(scipen=999)
 #Set seed and working directory-------------------------------------------------
 set.seed(100)
 setwd("~/Documents/Intro to ML")
-#, base_family="Avenir"
+
+#, base_family="Avenir" -- keeping default font due to latex rendering
 theme_custom <- function (text_size=12) { 
     theme_bw(base_size=text_size) %+replace% 
         theme(
@@ -50,17 +53,23 @@ theme_custom <- function (text_size=12) {
 
 #### Part (a)
 
+The data represents housing value in suburbs of Boston. Each row is one suburb and each column represents a particular characterstic associated with the particular suburb such as crime rate, taxation, accessibility to highways etc. The last column medv is median value of owner-occupied homes in units of $1000s.
 
 ```{r}
+#Attaching data for easier operations
 suppressMessages(suppressWarnings(attach(Boston)))
+
 cat("Number of rows and columns are : ",nrow(Boston)," and ",ncol(Boston)," respectively.\n")
 ```
-The data represents housing value in suburbs of Boston. Each row is one suburb and each column represents a particular characterstic associated with the particular suburb such as crime rate, taxation, accessibility to highways etc. The last column medv is median value of owner-occupied homes in units of $1000s.
+
 
 #### Part (b)
 
+Exploring bivariate relationships and correlations :
 
 ```{r}
+cat("\n")
+#Pair plot
 ggpairs(Boston[,c("crim","zn","indus","nox","ptratio","rad","tax","lstat","medv")],progress = F ,aes(alpha=0.6))+theme_custom(text_size =10)+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 ```
 
@@ -70,13 +79,20 @@ The crime rate (crim) and proportion of residential zone (zn) variables are high
 
 The scatterplots help us understand relationship of individual variables with median house value (medv) with it having inverse association with crime rate, NOx concentrations (nox), taxation (tax), percent of lower status population (lstat) whereas direct relatioship with proportion of residential zone (zn)
 
+Similarly, we see tax and indus positively correlated, nox and indus positively correlated, medv and lstat negatively correlated with absolute value of correlation greater than 0.7
+
+
+
 #### Part (c)
 
+We revisit correlations using corrgram function 
 
 ```{r}
 #Generate correlation matrix
-cor(Boston)
+round(cor(Boston),2)
 
+
+cat("\nVisualize correlation\n\n")
 #Visualize correlation relationships
 corrgram::corrgram(cor(Boston),upper.panel = panel.shade,lower.panel = NULL)
 
@@ -90,9 +106,10 @@ Observing the top row of the plot we see, crim has strong positive correlation w
 #### Part (d)
 
 
+Variable ranges
 
 ```{r}
-cat("#Range of crime rate in Boston suburbs : ", range(crim)," \n\n")
+cat("Range of crime rate in Boston suburbs : ", range(crim)," \n\n")
 
 cat("\nRange of tax rate in Boston suburbs : ", range(tax)," \n\n")
 
@@ -100,6 +117,7 @@ cat("\nRange of ptratio in Boston suburbs : ", range(ptratio)," \n\n")
 
 ```
 
+Detecting outliers in variables
 
 ```{r}
 #Crim variable outliers
@@ -122,17 +140,17 @@ While variable ptratio shows some left skew, crim shows very strong right skew i
 
 #### Part (e)
 
-
+Number of suburbs bound
 ```{r}
-table(chas)
+cat("A total of",table(chas)[[2]]," suburbs (roughly ", round(100*prop.table(table(chas))[[2]],2) , "%) are bounded by the Charles river.")
 #prop.table(table(chas))
 ```
 
-A total of 35 suburbs (roughly 7%) are bounded by the Charles river.
+
 
 #### Part (f)
 
-
+Median ptratio
 ```{r}
 cat("Median pupil-teacher ratio in the dataset is :", median(ptratio),". \n")
 
@@ -140,7 +158,7 @@ cat("Median pupil-teacher ratio in the dataset is :", median(ptratio),". \n")
 
 #### Part (g)
 
-
+Median values by variable
 ```{r}
 
 #Median values by variable
@@ -149,6 +167,10 @@ names(Med_df) <- "ColMedian"
 Med_df$Range_l = sapply(Boston,function(x)  round(range(x)[1],2))
 Med_df$Range_u = sapply(Boston,function(x)  round(range(x)[2],2))
 Med_df
+```
+Suburbs with minimum median value 
+
+```{r}
 
 #Suburbs with minimum median value 
 Boston[medv == min(medv),]
@@ -156,13 +178,26 @@ Boston[medv == min(medv),]
 ```
 
 
-The suburbs in row number 399 and 406 have the lowest 'median value' of $5000. We see, compared to dataset medians these suburbs have very high crime rate, higher proportion of non-retail businesses, higher NOx concentration, lesser #rooms, higher distance from radial highways and are highly taxed.
+The suburbs in row number 399 and 406 have the lowest 'median value' of $5000. We see, compared to dataset medians these suburbs have :
+1. Very high crime rate (crim)
+2. Higher indus
+3. Same median chas
+4. Higher NOx concentration (nox)
+5. Lesser #rooms (rm)
+6. Higher proportion of owner-occupied units built prior to 1940 
+7. Lower weighted mean of distances to five Boston employment centres
+8. Higher accessibility from radial highways
+9. Higher taxes
+10. Higher pupil-teacher ratio by town
+11. Higher proportion of blacks by town
+12. Higher percentage of population belonging in lower status category
 
 Based on variable distributions and range, the crime rate, lstat and tax rates in these low median value suburbs are at the higher end of their respective distribution. 
 
 
 #### Part (h)
 
+Suburbs with high #dwellings
 
 ```{r}
 cat("#Suburbs averaging more than 7 dwellings : ",length(which(rm > 7)),". \n")
@@ -180,6 +215,7 @@ Suburbs with more than eight dwellings on average have very low crime rate (crim
 
 #### Part (a)
 
+We run linear regression by individual columns and save the summary matrix in an object. The below data frame collates the co-efficients, SEs, p-values and estimate confidence intervals for easier readability. Post that we also plot the scatterplot of crim with each of the co-variates and observe their relationship trend under linearity assumption. We also observe respective CIs. The idea is if CI includes the slope = 0 (line parallel to x-axis) we aren't sure of particular variable's coefficient not being zero, thereby not being able to confirm any association between variable and crime rate.
 
 ```{r}
 #Running regression by variable
@@ -223,7 +259,7 @@ Above plot shows regression lines with respect to each variable and crim - blue 
 
 As we can see from the plot,we have atleast 95% confidence that the slope of the regression line is non-zero for all regression line except chas which has upper and lower confidence bands with positive and negative slopes respectively implying we can't satisfactorily say that slope isn't zero. 
 
-This proves aforementioned statistically ignificant association of all remaining variables.
+This proves aforementioned statistically significant association of all remaining variables.
 
 
 #### Part (b)
@@ -233,23 +269,28 @@ summary(lm.model)
 
 ```
 
-We can reject the null hypothesis (beta = 0) for the variables zn, dis, rad, black and medv. We observe some betas may have changed directionality from their initial results in simple regression.
+We can reject the null hypothesis (beta = 0) for the variables zn, dis, rad, black and medv. We observe some betas may have changed directionality from their initial results in simple regression. Case in point, zn in univariate regression returns a negative coefficient whereas returns positive statistically significant in multivariate setting. This is key insight since now we know given all other covariates are kept constant, per unit change in zn, will increase crime rate which would be in contrast of observation from a scatterplot of the same that shows negative slope for fitted line.
 
 #### Part (c)
+
+Compare simple linear model and MLR betas
 ```{r}
 both_coef <- data.frame(Simple = round(coef_df$estimate,2), Multiple = round(lm.model$coefficients[2:length(lm.model$coefficients)],2)  )
 both_coef
 ```
 
-We observe directionality of coefficients changes for zn, indus, nox, rm, ptratio when all variables are considered together.
+We observe directionality of coefficients changes for zn, indus, nox, rm, ptratio when all variables are considered together. 
 
 ```{r}
 ggplot(data = both_coef,aes(x = Simple, y = Multiple)) + geom_point(color="red",fill="black",size=2.5,alpha=0.5)+theme_custom()
 ```
-Coefficient for nox sees most deviation, changing from 31 in simple lr to -10 in multiple regression. These changes are due to the fact that multiple regression provides coefficients under the condition that all remaining covariates are held constant whereas simple linear regression only takes in consideration the correlation between the dependent and independent variable.
+
+Coefficient for nox sees most deviation, changing from 31 in simple lr to -10 in multiple regression. As stated above, these changes are due to the fact that multiple regression provides coefficients under the condition that all remaining covariates are held constant whereas simple linear regression only takes in consideration the correlation between the dependent and independent variable.
 
 
 #### Part (d)
+ 
+ Approach 1 : We can check whether non-linear curves are able to fit our data better and make a visual reading
 ```{r warning=FALSE}
 #To check for non-linearity -- Approach 1 -- Plot
 suppressMessages(ggplot(data = Boston,aes(x = zn, y = crim)) + geom_point(color="salmon",fill="black",size=1.5,alpha=0.65)+theme_custom()+ylim(c(0,10))+
@@ -259,6 +300,8 @@ suppressMessages(ggplot(data = Boston,aes(x = zn, y = crim)) + geom_point(color=
 ```
 Plotting variables and fitting local polynomial regression fitting or generalized additive models we see there is some non-linearity present in relationship of crim with zn.
 
+Approach 2 : Is there any pattern remaining in the residuals post linear regression?
+
 ```{r}
 #Approach 2 -- Pattern in residuals
 mod_summ <- summary(lm(crim~zn))
@@ -266,6 +309,8 @@ plot(zn, mod_summ$residuals  , ylab="Residuals", col="salmon")
 
 ```
 We see non-linearity in residual vs independent variable plot meaning linear model has not been able to extract the non-linear aspect of the relationship between crim and zn.
+
+Approach 3 : We can model polynomial terms and check whether they result significant betas
 
 ```{r}
 #Approach 3 -- Running polynomial regression
@@ -286,13 +331,19 @@ p13 = broom::tidy(summary(lm(crim~poly(medv,3))),conf.int=T)
 
 coef_poly_df <- as.data.frame(rbind(p1[2:4,],p2[2:4,],p3[2,],p4[2:4,],p5[2:4,],p6[2:4,],p7[2:4,],p8[2:4,],p9[2:4,],p10[2:4,],p11[2:4,],p12[2:4,],p13[2:4,]))
 
-coef_poly_df[!names(coef_poly_df) %in% c("term")] <- sapply(coef_poly_df[!names(coef_poly_df) %in% c("term")] , function(x) round(x,4))
+coef_poly_df[!names(coef_poly_df) %in% c("term")] <- sapply(coef_poly_df[!names(coef_poly_df) %in% c("term")] , function(x) round(x,2))
 
 coef_poly_df
 ```
+We observe quadratic terms of the variables zn, rm, rad, tax, lstat report out significant co-efficients.
+Similarly cubic terms of the variables indus, nox, age, dis, ptratio, medv report significant co-efficients. This implies crime rate has valid non-linear relationships with multiple covariates.
+
+
 ### Chapter #6 : Ques 9
 
 #### Part (a)
+
+Import college data from ISLR package
 
 ```{r}
 #Load data
@@ -316,10 +367,11 @@ train <- college[train_ind, ]
 test <- college[-train_ind, ]
 
 #Dimensions of train and test
-dim(train) ; dim(test)
+cat("Number of rows and columns in train are :",nrow(train)," and ",ncol(train)," respectively.\n")
+cat("Number of rows and columns in test are :",nrow(test)," and ",ncol(test)," respectively.\n")
 
 #Number of colleges overlap in train and test
-length(which(rownames(train) %in% rownames(test)))
+#length(which(rownames(train) %in% rownames(test)))
 
 #Scale original data
 #college_scaled = as.data.frame(sapply(college,scale))
@@ -334,9 +386,10 @@ Train test split made with train set having 75% of datapoints and remaining in t
 
 #### Part (b)
 
+Running MLR
 ```{r}
 
-set.seed(100)
+set.seed(101)
 
 linearModel <- lm(Apps~. , data = college)
 summary(linearModel)
@@ -357,7 +410,9 @@ cat("Train RMSE is :",sqrt(mean((train$Apps - predict(linearModel , train))^2)),
 We see train RMSE is bit higher than test set RMSE.
 
 #### Part (c)
-
+ Ridge penalty
+ 
+ 
 ```{r}
 
 #Creating independent and dependent variables in required classes
@@ -376,13 +431,17 @@ cv_Ridge <- cv.glmnet(x = x.train, y = y.train , family = "gaussian" , alpha=0)
 plot(cv_Ridge)
 
 ```
+Above plot shows results from the devaince optimization with respect to lambda and returns lambda with minimum mean squared error and lambda with MSE within 1st standard deviation as lambda.1se
+
+The ranges in the plot are indicative of the variance being explained, as lambda goes down we see the model being regularized and model variance being curtailed. We use lambda.1se for regularizing our model.
+
 ```{r}
 set.seed(100)
 
-cv_Ridge_min <- glmnet(x = x.train, y = y.train , family = "gaussian", lambda = cv_Ridge$lambda.min)
+cv_Ridge_1se <- glmnet(x = x.train, y = y.train , family = "gaussian", lambda = cv_Ridge$lambda.1se , alpha = 0)
 
 
-predApps_Ridge <- predict(cv_Ridge_min , x.test)
+predApps_Ridge <- predict(cv_Ridge_1se , x.test)
 
 #Evaluate deviation from actual y
 errorApps_Ridge = test$Apps - predApps_Ridge
@@ -392,10 +451,20 @@ cat("Test Root mean squared error for Ridge regularized model is : ",RMSE_error_
 
 ```
 
-Ridge regression reduces test set RMSE marginally.
+Ridge regression increases the test set RMSE a little bit compared to the MLR model at lambda.1se. Using lambda.min probably reduces test set RMSE marginally.
 
+```{r}
+coef_df_Ridge = data.frame(VarName = rownames(as.matrix(coef(cv_Ridge_1se)))  , as.matrix(coef(cv_Ridge_1se)) )
+names(coef_df_Ridge)[2] <- "Beta"
+coef_df_Ridge$Beta <- round(coef_df_Ridge$Beta,2)
+coef_df_Ridge[coef_df_Ridge$Beta != 0,]
+```
+As expected we get coefficients of all variables with not-so-important betas closer to zero.
 
 #### Part (d)
+
+Implementing Lasso penalty
+
 
 ```{r}
 set.seed(100)
@@ -403,11 +472,18 @@ set.seed(100)
 cv_Lasso <- cv.glmnet(x = x.train, y = y.train , family = "gaussian" , alpha=1)
 
 plot(cv_Lasso)
+```
 
-cv_Lasso_min <- glmnet(x = x.train, y = y.train , family = "gaussian", lambda = cv_Lasso$lambda.min)
+We see model variance falls rapidly as lambda decreases with similar variance being explained at lambda.min and lambda.1se
 
 
-predApps_Lasso <- predict(cv_Lasso_min , x.test)
+
+```{r}
+
+cv_Lasso_1se <- glmnet(x = x.train, y = y.train , family = "gaussian", lambda = cv_Lasso$lambda.1se , alpha = 1)
+
+
+predApps_Lasso <- predict(cv_Lasso_1se , x.test)
 
 #Evaluate deviation from actual y
 errorApps_Lasso = test$Apps - predApps_Lasso
@@ -415,16 +491,23 @@ RMSE_error_Lasso = sqrt(mean((errorApps_Lasso)^2))
 
 cat("Test Root mean squared error for Lasso regularized model is : ",RMSE_error_Lasso , "\n")
 
-coef_df_Lasso = data.frame(VarName = rownames(as.matrix(coef(cv_Lasso_min)))  , as.matrix(coef(cv_Lasso_min)) )
+coef_df_Lasso = data.frame(VarName = rownames(as.matrix(coef(cv_Lasso_1se)))  , as.matrix(coef(cv_Lasso_1se)) )
 
 names(coef_df_Lasso)[2] <- "Beta"
 coef_df_Lasso$Beta <- round(coef_df_Lasso$Beta,2)
 
 coef_df_Lasso[coef_df_Lasso$Beta != 0,]
 ```
-Lasso regression further reduces test set RMSE a little bit.
+Lasso regression reduces the test set RMSE compared to Ridge implementations. This is owing to the fact that the Lasso penalty is able to throw out unneeded variables and gives out a more generalized model.
+
+Also given variance explained is pretty much similar at lambda.min and lambda.1se, we'd expect similar test RMSE for lambda.min as well
+
+Lasso at lambda.1se makes most betas to zero and shares betas associated with only Accept, Top10perc and Expend variables.
 
 #### Part (e)
+
+Implementing Principal Component Regression
+
 
 ```{r}
 # PCR model by cross validation
@@ -437,7 +520,7 @@ summary(pcr.fit)
 validationplot(pcr.fit ,val.type="MSEP")
 
 ```
-Given the mean squared error of prediction saturates at number of components = 9, we choose M = 9 for our final model.
+We observe the CV results and validation plots. Given the mean squared error of prediction saturates at number of components = 9, we choose M = 9 for our final model. This ensure that over model is simpler, more genralized.
 
 ```{r}
 set.seed(100)
@@ -457,6 +540,8 @@ cat("Test Root mean squared error for PCR  model is : ", RMSE_error_PCR , "\n")
 Even upon choosing M via cross-validation, PCR model gives worse RMSE than Ridge or Lasso.
 
 #### Part (f)
+Implementing PLS model
+
 ```{r}
 set.seed(100)
 
@@ -473,22 +558,32 @@ RMSE_error_PLS = sqrt(mean((errorApps_PLS)^2))
 cat("Test Root mean squared error for PLS model is : ", RMSE_error_PLS , "\n")
 ```
 
-PLS model performs better than pricipal component regression but is still not able to beat RMSE scores from Ridge and Lasso on test set.
+PLS model performs better than pricipal component regression but is still not able to beat RMSE scores from  Lasso at lambda.1se on test set.
 
 
 #### Part (g)
 
+Comparing all models
+
 ```{r}
 
-data.table(Model = c("LR","Ridge","Lasso","PCR","PLS") , RMSE = c(RMSE_error,RMSE_error_Ridge,RMSE_error_Lasso,RMSE_error_PCR, RMSE_error_PLS))
+dt <- data.table(Model = c("LR","Ridge","Lasso","PCR","PLS") , RMSE = c(RMSE_error,RMSE_error_Ridge,RMSE_error_Lasso,RMSE_error_PCR, RMSE_error_PLS))
+dt$RMSE <- round(dt$RMSE,2)
+
+dt
 
 ```
 
-We see Lasso despite omitting out few variables gives us a better RMSE than all other models. Ridge regularization also gives improvement over the linear regression RMSE. Interestingly, there's quite a difference between RMSE values of PCR and PLS despite both of them being based on dimensionality reduction while greedily maximing variance. This implies that the supervised transformations that PLS does post PCA offer good predictive power in estimating dependent variable.
+We see Lasso despite omitting out few variables gives us a better RMSE than all other regularized/PCA based models. Best RMSE is availed by the multiple linear regression. Interestingly, there's quite a difference between RMSE values of PCR and PLS despite both of them being based on dimensionality reduction while greedily maximizing variance. 
+
+This implies that the supervised transformations that PLS does post PCA offer good predictive power in estimating dependent variable.
 
 ### Chapter #6 : Ques 11
 
 #### Part (a)
+
+We redo the sampling train test, run Ridge, Lasso and PCR models as in the above example. In addition we do the best subset implementation and report out the RMSE from linear model of these best-subsetted variables. As above, we haven't scaled the variables since glmnet is able to do so internally as stated here :
+https://www.statology.org/ridge-regression-in-r/
 
 ```{r}
 #Reproducibility
@@ -525,27 +620,62 @@ plot(cv_Ridge)
 
 set.seed(100)
 
-cv_Ridge_min <- glmnet(x = x.train, y = y.train , family = "gaussian", lambda = cv_Ridge$lambda.min)
+cv_Ridge_1se <- glmnet(x = x.train, y = y.train , family = "gaussian", lambda = cv_Ridge$lambda.1se, alpha = 0)
+
+coef_df_Ridge = data.frame(VarName = rownames(as.matrix(coef(cv_Ridge_1se)))  , as.matrix(coef(cv_Ridge_1se)) )
+names(coef_df_Ridge)[2] <- "Beta"
+coef_df_Ridge$Beta <- round(coef_df_Ridge$Beta,2)
+coef_df_Ridge
+```
+We see ridge is not able to regularize our model much. Betas of quite a few variables are closer to zero.
 
 
-predcrim_Ridge <- predict(cv_Ridge_min , x.test)
+```{r}
+
+predcrim_Ridge <- predict(cv_Ridge_1se , x.test)
 
 #Evaluate deviation from actual y
 errorcrim_Ridge = test$crim - predcrim_Ridge
 RMSE_error_Ridge = sqrt(mean((errorcrim_Ridge)^2))
 
 cat("Test Root mean squared error for Ridge regularized model is : ",RMSE_error_Ridge , "\n")
+```
 
+```{r}
 set.seed(100)
 
 cv_Lasso <- cv.glmnet(x = x.train, y = y.train , family = "gaussian" , alpha=1)
 
 plot(cv_Lasso)
 
-cv_Lasso_min <- glmnet(x = x.train, y = y.train , family = "gaussian", lambda = cv_Lasso$lambda.min)
+cv_Lasso_1se <- glmnet(x = x.train, y = y.train , family = "gaussian", lambda = cv_Lasso$lambda.1se , alpha = 1)
+
+coef_df_Lasso = data.frame(VarName = rownames(as.matrix(coef(cv_Lasso_1se)))  , as.matrix(coef(cv_Lasso_1se)) )
+names(coef_df_Lasso)[2] <- "Beta"
+coef_df_Lasso$Beta <- round(coef_df_Lasso$Beta,2)
+
+coef_df_Lasso[coef_df_Lasso$Beta != 0,]
+
+```
+
+Lasso regularization also has similar MSE vs lambda plot and is not reducing model variance by much. Also lasso is removing out almost all the variables. We try to use a custom lambda that is less regularized and gives out few more variables with non-zero betas.
+
+```{r}
+cv_Lasso_1se <- glmnet(x = x.train, y = y.train , family = "gaussian", lambda = 0.25 , alpha = 1)
+
+coef_df_Lasso = data.frame(VarName = rownames(as.matrix(coef(cv_Lasso_1se)))  , as.matrix(coef(cv_Lasso_1se)) )
+names(coef_df_Lasso)[2] <- "Beta"
+coef_df_Lasso$Beta <- round(coef_df_Lasso$Beta,2)
+
+coef_df_Lasso[coef_df_Lasso$Beta != 0,]
+
+```
+Lasso now is able to give out more variables with non-zero betas.
 
 
-predcrim_Lasso <- predict(cv_Lasso_min , x.test)
+```{r}
+
+predcrim_Lasso <- predict(cv_Lasso_1se , x.test)
 
 #Evaluate deviation from actual y
 errorcrim_Lasso = test$crim - predcrim_Lasso
@@ -553,12 +683,13 @@ RMSE_error_Lasso = sqrt(mean((errorcrim_Lasso)^2))
 
 cat("Test Root mean squared error for Lasso regularized model is : ",RMSE_error_Lasso , "\n")
 
-coef_df_Lasso = data.frame(VarName = rownames(as.matrix(coef(cv_Lasso_min)))  , as.matrix(coef(cv_Lasso_min)) )
+```
 
-names(coef_df_Lasso)[2] <- "Beta"
-coef_df_Lasso$Beta <- round(coef_df_Lasso$Beta,2)
+Test MSE is slightly lower than Ridge model at lambda.1se
 
-coef_df_Lasso[coef_df_Lasso$Beta != 0,]
+Custom lambda further reduces Test MSE a bit, given we're moving our penalty parameter towards lambda.min.
+
+```{r}
 
 # PCR model by cross validation
 set.seed(100)
@@ -571,7 +702,7 @@ validationplot(pcr.fit ,val.type="MSEP")
 
 set.seed(100)
 
-pcr.fit2 = pls::pcr(formula = crim~. , data=train, scale=TRUE ,ncomp= 9 )
+pcr.fit2 = pls::pcr(formula = crim~. , data=train, scale=TRUE ,ncomp= 8 )
 
 pls.pred = predict (pcr.fit2 , test)
 
@@ -580,12 +711,23 @@ errorcrim_PCR = test$crim - pls.pred
 RMSE_error_PCR = sqrt(mean((errorcrim_PCR)^2))
 
 cat("Test Root mean squared error for PCR  model is : ", RMSE_error_PCR , "\n")
+```
 
-#using max number of variables based on regfit
+PCR test RMSE is also closer to Lasso Test MSE. We choose number of components such that our CV errors and Adj. R-squares are minimum or stable (thereby making our model more robust to slight hyperparameter fluctuations)
+
+
+```{r}
+#using max number of variables as 15 to provide some regularization 
 regFitModel <- regsubsets(crim~. , data = Boston , nvmax=15, method ="forward")
 
 plot(regFitModel)$adjr2
 
+#Summary of regFit provides best subset for the same
+summary(regFitModel)
+
+```
+
+```{r}
 #Adjusted R-sq for model subset -- Model removing chas, rm, age and tax
 summary(regFitModel)$adjr2[ (which(summary(regFitModel)$adjr2 == max(summary(regFitModel)$adjr2)))]
 
@@ -604,6 +746,7 @@ cat("Test Root mean squared error is : ",RMSE_error , "\n")
 
 data.table(Model = c("Subsetting","Ridge","Lasso","PCR") , RMSE = c(RMSE_error,RMSE_error_Ridge,RMSE_error_Lasso,RMSE_error_PCR))
 ```
+
 We see best subsetting offers us lowest test set RMSE. From the percent deviation optimization plots of ridge and Lasso, we see that the variance does not drastically change for different values of lambda meaning both L1-L2 regularizations are not able to easily generalize the regression model. Now given Principal component regression is also not able to get better test RMSE, it suggests the actual subset of columns is better able to model unseen data than orthogonal principal components attempting to explain most variance in data.
 
 This could probably be due to relatively high correlation of target variables with x. The orthogonal PCs might be missing out on some correlation and essentially have slightly more information loss.
@@ -614,6 +757,7 @@ Hence, despite lasso and PCR being good tools, in theory to weed out unnecessary
 #### Part (b)
 
 It might be interesting to see how PCLS - using supervised transformation of pricipal components explains variance in the data and if it is able to beat the Best subset RMSE benchmark.
+
 ```{r}
 
 set.seed(100)
@@ -641,11 +785,14 @@ The Best subset method drops out chas, rm, age and tax. Chas is not significant 
 
 To summarize, if model interpretation is a necessity, the preffered model would be Best subset model vs if accuracy on out-of-sample data is key priority for our model, the PLS model holds best promise of a simpler, robust model.
 
+One key point to note is predictions of Crim are coming out to be negative as well given our model wouldn't understand that negative crim rate is not plausible. It treats crime rate as a numeric value that could be scaled and go below 0 if signals in the data suggest to reduce crime rate too much.
+
 
 ### Chapter #4 : Ques 10
 
 #### Part (a)
 
+Quick EDA of all variables in new data
 
 ```{r}
 df <- ISLR::Weekly
@@ -654,6 +801,9 @@ df <- ISLR::Weekly
 DescTools::Desc(df)
 
 ```
+
+Correlations
+
 ```{r}
 
 #Coerce Direction into numeric
@@ -664,6 +814,8 @@ df$Direction <- as.numeric(df$Direction) - 1
 corrgram::corrgram(cor(df),upper.panel = panel.shade,lower.panel = NULL)
 
 ```
+Pair plots
+
 ```{r}
 
 #Pair plots to understand scatterplot distributions
@@ -690,6 +842,7 @@ summary(logitModel)
 In addition to the Intercept only the Lag2 variable (% Return of last 2 weeks) gives out significant co-efficient.
 
 #### Part (c)
+ROC and PR curves along with performance metrics of logit model with multiple variables
 
 ```{r}
 
@@ -697,17 +850,17 @@ PredAll = predict(logitModel, newdata=df[,!colnames(df) == "Direction"], type="r
 confusionMatrix(as.factor(as.numeric(PredAll>=0.5)),reference = as.factor(df$Direction))
 
 #Zero represents Down, 1 represents Up
-logit_pred_obj <- prediction(PredAll,df$Direction)
-auc_logit_all <- performance(logit_pred_obj,"auc")
+logit_pred_obj <- ROCR::prediction(PredAll,df$Direction)
+auc_logit_all <- ROCR::performance(logit_pred_obj,"auc")
 
 #AUC of the model
-auc_logit_all@y.values[[1]][1]
+cat("Logit Model regressed using all variables gives AUC of ",auc_logit_all@y.values[[1]][1])
 
 #AUC ROC and PR Curve
 precrec_obj_test <- evalmod(scores = PredAll, labels = df$Direction)
 autoplot(precrec_obj_test)
 
-logit_pr_all <- performance(logit_pred_obj,"rec","prec")
+logit_pr_all <- ROCR::performance(logit_pred_obj,"rec","prec")
 pr_df= data.frame(logit_pr_all@x.values,logit_pr_all@y.values)
 names(pr_df) <- c("Precision", "Recall")
 pr_df$F1 = 2*pr_df$Precision * pr_df$Recall / (pr_df$Precision + pr_df$Recall)
@@ -724,6 +877,8 @@ We also see recall availed as $Recall = \frac{TP}{TP+FN}$ thereby dependent upon
 
 
 #### Part (d)
+Train test split and using Lag2 as independent variable
+
 ```{r}
 #Create out train and test
 train_df = df[(df$Year<2009),]
@@ -737,33 +892,39 @@ logitModel_Lag2 = glm(Direction ~ Lag2, data=train_df, family=binomial)
 
 # Predictions on test
 probLags2 = predict(logitModel_Lag2,test_df[,!colnames(test_df) == "Direction"], type="response")
+```
 
+We observe following confusion matrix and performance metrics for the model at cutoff = 0.5
+
+```{r}
 confusionMatrix(as.factor(as.numeric(probLags2>=0.5)),reference =as.factor(test_df$Direction))
 
 #Zero represents Down, 1 represents Up
-logit_pred_obj2 <- prediction(probLags2,test_df$Direction)
-auc_logit_all2 <- performance(logit_pred_obj2,"auc")
+logit_pred_obj2 <- ROCR::prediction(probLags2,test_df$Direction)
+auc_logit_all2 <- ROCR::performance(logit_pred_obj2,"auc")
 
 #AUC of the model
-auc_logit_all2@y.values[[1]][1]
+cat("Logit Model regressed using Lag2 gives AUC of ",auc_logit_all2@y.values[[1]][1])
 
 #AUC ROC and PR Curve
 precrec_obj_test2 <- evalmod(scores = probLags2, labels = test_df$Direction)
 autoplot(precrec_obj_test2)
 
-logit_pr_all <- performance(logit_pred_obj2,"rec","prec")
+logit_pr_all <- ROCR::performance(logit_pred_obj2,"rec","prec")
 pr_df= data.frame(logit_pr_all@x.values,logit_pr_all@y.values)
 names(pr_df) <- c("Precision", "Recall")
 pr_df$F1 = 2*pr_df$Precision * pr_df$Recall / (pr_df$Precision + pr_df$Recall)
 
 
 ```
+
 The problem of overpredicting the class Up persists with overall accuracy = 0.625, recall = 0.918 but a low precision of 0.622
 
-The ROC curve is intersecting the x = y line implying that the model often performs worse than a random classifier implying there is too much uncertainty associated with the predictions of the model at different probability cutoffs with cetain time when model performs worse than a random classifier. This is interesting given the 'statistically significant' variable Lags2 is not sufficient in itself or does not have adequate patterns to be able to segregate the target classes on it's own when tested on the out-of-sample data.
+The ROC curve is intersecting the x = y line implying that the model often performs worse than a random classifier implying there is too much uncertainty associated with the predictions of the model at different probability cutoffs with certain instances when model performs worse than a random classifier. This is interesting given the 'statistically significant' variable Lags2 is not sufficient in itself or does not have adequate patterns to be able to segregate the target classes on it's own when tested on the out-of-sample data.
 
 #### Part (g)
 
+Use Knn
 ```{r}
 
 # Predictions for K=1
@@ -777,22 +938,25 @@ confusionMatrix(as.factor(knnModel$fitted.values),reference = as.factor(test_df$
 #AUC ROC and PR Curve
 #precrec_obj_test3 <- evalmod(scores = knnModel$fitted.values, labels = test_df$Direction)
 #autoplot(precrec_obj_test3)
+#Zero represents Down, 1 represents Up
+
 
 ```
 
-We observe a decrease in the accuracy and the model is not being able to pick some signals up relevant to segregating Upwards vs Downwards. Accuracy = 0.4615, Recall = 0.3770 and Precision drops as well due to reduction in False positives at 0.5609
+Model performance decreases a bit.
 
 #### Part (h)
 
-KNN with k = 1 (1st nearest neighbour) performs better than the logistic regression on the out-of-sample data.
+KNN with k = 1 (1st nearest neighbour) performs worse than the logistic regression on the out-of-sample data.
 
-This is expected as the most dominant predictor of a time series data, especially in trading data would be the nearest trends surrounding the market. For example, if the market is going down for few consistent weeks, the knn model will be able to pick up on this method while searching for the 'neighborhood'
+We observe a decrease in the accuracy and the model is not being able to pick some signals up relevant to segregating Upwards vs Downwards. Accuracy = 0.4615, Recall = 0.3770 and Precision drops as well due to reduction in False positives at 0.5609
 
-The only catch with knn, would be inability to predict sharp turns from 'Down to Up' or 'Up to Down' since historical data would always recommend the most occuring trend for particular values of Lags, especially for low values of k and ideally we shouldn't be using future data to predict the past as it'll be an obvious leakage.
+Ideally as we increase k, the model should be able to learn more patterns of Direction at closer (X) values and be able to refine it's solutions
 
 
 #### Part (i)
 
+Testing variable combinations with step-wise
 
 ```{r warning=FALSE}
 #Exploring stepwise models to see effect of addition of variables
@@ -853,31 +1017,32 @@ Again, we do not see any improvement by including quadratic transformations of p
 
 set.seed(100)
 
+cat("\nModel performance with k = 5\n")
 knnModel5 = kknn(Direction~Year+Lag1+Lag2+Lag3+Lag4+Lag5+Volume, train_df, test_df, k=5)
 #Confusion matrix for the test set
 confusionMatrix(as.factor(as.numeric(knnModel5$fitted.values > 0.5)),reference = as.factor(test_df$Direction))
 
 set.seed(100)
-
+cat("\nModel performance with k = 10\n")
 knnModel10 = kknn(Direction~Year+Lag1+Lag2+Lag3+Lag4+Lag5+Volume, train_df, test_df, k=10)
 #Confusion matrix for the test set
 confusionMatrix(as.factor(as.numeric(knnModel10$fitted.values > 0.5)),reference = as.factor(test_df$Direction))
 
 set.seed(100)
-
+cat("\nModel performance with k = 20\n")
 knnModel20 = kknn(Direction~Year+Lag1+Lag2+Lag3+Lag4+Lag5+Volume, train_df, test_df, k=20)
 #Confusion matrix for the test set
 confusionMatrix(as.factor(as.numeric(knnModel20$fitted.values > 0.5)),reference = as.factor(test_df$Direction))
 
 set.seed(100)
-
+cat("\nModel performance with k = 50\n")
 knnModel50 = kknn(Direction~Year+Lag1+Lag2+Lag3+Lag4+Lag5+Volume, train_df, test_df, k=50)
 #Confusion matrix for the test set
 confusionMatrix(as.factor(as.numeric(knnModel50$fitted.values > 0.5)),reference = as.factor(test_df$Direction))
 
 
 set.seed(100)
-
+cat("\nModel performance with k = 100\n")
 knnModel100 = kknn(Direction~Year+Lag1+Lag2+Lag3+Lag4+Lag5+Volume, train_df, test_df, k=100)
 #Confusion matrix for the test set
 confusionMatrix(as.factor(as.numeric(knnModel100$fitted.values > 0.5)),reference = as.factor(test_df$Direction))
@@ -887,12 +1052,15 @@ confusionMatrix(as.factor(as.numeric(knnModel100$fitted.values > 0.5)),reference
 ```
 
 With k = 100 we are able to achieve relatively higher accuracy = 0.5673 with low precision of 0.5975 and recall of 0.8033
+But given higher values of k will end up increasing the complexity of the model, we could also avail almost similar test performance at slightly lower values of k, say k = 20.
 
 We're able to push for marginally higher Precision compared to logistic regression but overall accuracy and recall are still lacking!
 
 ### Chapter #8 : Ques 8
 
 #### Part (a)
+
+Descriptive stats of Carseats
 
 ```{r}
 cs <- ISLR::Carseats
@@ -915,9 +1083,11 @@ cat("Number of rows of train and test are :" , nrow(train) , " and " , nrow(test
 
 #### Part (b)
 
+Decision trees using rpart
+
 ```{r}
 tree1 = rpart(Sales ~ . , data = train , method = "anova")
-tree1
+#tree1
 
 rpart.plot::rpart.plot(tree1, box.palette = "Greens")
 ```
@@ -946,7 +1116,7 @@ The printcp and plotcp methods in rpart cross-validate and return the cross-vali
 
 Here ideal cp is 0.02-0.038 with 5-10 splits!
 
-
+Tree at cp = 0.02
 ```{r}
 #using cp = 0.038
 tree2 = rpart(Sales ~ . , data = train , method = "anova" , cp = 0.02)
@@ -962,6 +1132,7 @@ Using a pruned tree with 10 leaf nodes at a complexity parameter of 0.02, we're 
 
 
 #### Part (d)
+RF Implementation 
 
 ```{r}
 
@@ -971,7 +1142,7 @@ set.seed(100)
 bagged10 = randomForest(Sales~., data=train, mtry=10, importance=T)
 
 #importance Matrix
-importance(bagged10)
+round(importance(bagged10),2)
 varImpPlot(bagged10)
 
 baggedPred10 = predict(bagged10,newdata = test)
@@ -983,15 +1154,17 @@ Similar to the rpart plots, top features are ShelveLoc, Price and CompPrice foll
 
 We see RF is able to considerably reduce the out-of-sample MSE (2.17) on account of bagging multiple samples with replacement. 
 
+#RF with multiple m-values
+
 ```{r}
 
 # RandomForest (m = 2)
 set.seed(100)
-
+cat("Randomforest with m = 2 \n")
 bagged2 = randomForest(Sales~., data=train, mtry=2, importance=T)
 
 #importance Matrix
-importance(bagged2)
+round(importance(bagged2),2)
 varImpPlot(bagged2)
 
 baggedPred2 = predict(bagged2,newdata = test)
@@ -999,21 +1172,21 @@ cat("Mean Squared Error of RF with m = 2 on the test set is :",mean((baggedPred2
 
 
 
-
+cat("Randomforest with m = 4 \n")
 # RandomForest (m = 4)
 set.seed(100)
 
 bagged4 = randomForest(Sales~., data=train, mtry=4, importance=T)
 
 #importance Matrix
-importance(bagged4)
+round(importance(bagged4))
 varImpPlot(bagged4)
 
 baggedPred4 = predict(bagged4,newdata = test)
 cat("Mean Squared Error of RF with m = 4 on the test set is :",mean((baggedPred4-test$Sales)^2),"\n")
 
 
-
+cat("Randomforest with m = 6 \n")
 
 # RandomForest (m = 6)
 set.seed(100)
@@ -1021,13 +1194,13 @@ set.seed(100)
 bagged6 = randomForest(Sales~., data=train, mtry=6, importance=T)
 
 #importance Matrix
-importance(bagged6)
+round(importance(bagged6),2)
 varImpPlot(bagged6)
 
 baggedPred6 = predict(bagged6,newdata = test)
 cat("Mean Squared Error of RF with m = 6 on the test set is :",mean((baggedPred6-test$Sales)^2),"\n")
 
-
+cat("Randomforest with m = 8 \n")
 
 # RandomForest (m = 8)
 set.seed(100)
@@ -1035,7 +1208,7 @@ set.seed(100)
 bagged = randomForest(Sales~., data=train, mtry=8, importance=T)
 
 #importance Matrix
-importance(bagged)
+round(importance(bagged),2)
 varImpPlot(bagged)
 
 baggedPred = predict(bagged,newdata = test)
@@ -1047,11 +1220,15 @@ The top 2 variables are constant for all values of m, viz. Shelveloc and Price i
 
 MSEs for different m are comparable but none of the m values are able to beat the bagging benchmark test MSE.
 
-As m keeps on increasing, the test MSE in this case keeps on decreasing.
+As m keeps on increasing, the test MSE in this case keeps on decreasing with m = 6 giving best MSE as 2.24 amongst the ones tried above. 
+
+MSE further decreases going from m=8 to m=10
 
 ### Chapter #8 : Ques 11
 
 #### Part (a)
+
+Load data
 
 ```{r}
 carv <- ISLR::Caravan
@@ -1067,8 +1244,9 @@ cat("Number of rows in train and test are : ",nrow(carv.train)," and ",nrow(carv
 
 
 #### Part (b)
+Boosting implementation
 
-```{r warning=FALSE}
+```{r warning=FALSE }
 
 set.seed(100)
 
@@ -1084,7 +1262,7 @@ PPERSAUT > MKOOPKLA > MOPLHOOG > PBRAND > MBERMIDD at the given hyperparameters
 
 
 #### Part (c)
-
+Test performance metrics at cutoff 0.2
 
 ```{r}
 # Predcited probalbilites on test
@@ -1118,6 +1296,9 @@ We see logistic model offers a better Recall of 0.20 which is a lift from 0.11 o
 ### Problem #1 : Beauty Pays!
 
 #### Part (a)
+
+Descriptive Stats
+
 ```{r}
 #Read in the data
 beauty <- data.table::fread("BeautyData.csv")
@@ -1126,6 +1307,8 @@ beauty <- data.table::fread("BeautyData.csv")
 DescTools::Desc(beauty)
 
 ```
+Model course evals with beauty score
+
 ```{r}
 #Modelling beauty variable into course ratings
 lmModel_beauty <- lm(data = beauty , formula = CourseEvals ~ BeautyScore)
@@ -1133,6 +1316,8 @@ summary(lmModel_beauty)
 ```
 Univariate linear regression points towards very strong positive association between beauty metric and the course evaluations. However beauty alone does not explain much of the variance of CourseEvals since we see a poor R-sq of 0.1657. This means we need to have a multivariate analysis of other determinant variables that might also be predictive of CourseEvals and gauge the coefficient of BeautyScore in such a setting, keeping all other determinants constant.
 
+
+Model course evals with all covariates
 ```{r}
 #Modelling all variables into course ratings
 lmModel_beautyall <- lm(data = beauty , formula = CourseEvals ~ .)
@@ -1154,6 +1339,8 @@ This is where Dr. Hamermesh is suggesting that disentangling this relationship a
 
 ### Problem #2 : Housing Price Structure
 
+Summarize raw data
+
 ```{r}
 housing <- read.csv("MidCity.csv", header = T)
 
@@ -1163,6 +1350,8 @@ summary(housing)
 ```
 
 #### Part (1)
+
+Model with all covariates
 
 ```{r}
 #Multivariate analysis to model price with respect to other variables
@@ -1176,6 +1365,8 @@ housing$Brick <- as.factor(housing$Brick)
 #Convert Neighborhood into factor
 housing$Nbhd <- as.factor(housing$Nbhd)
 
+
+set.seed(100)
 linearModel_housing <- lm(Price ~ . , data = housing)
 summary(linearModel_housing)
 
@@ -1186,11 +1377,11 @@ We see keeping all other co-variates constant, we see significant direct relatio
 
 #### Part (2)
 
-Since Neighbourhood goes into the model matrix as a factor with all it's levels one hot encoded, we see the model does not revert out a beta corresponding to the last level of the factor. This means, given all things constant, say if the average price of an apartment in neighborhood 3 is $100k, we can use the betas of other neighbourhoods to compare prices with neighborhood 3. Since beta for neighborhood 1 and 2 are both ~ -\$20 to -\$22k, we can say the average prices in those neighborhoods, given other covariates kept constant would be approximately \$80k and \$78k respectively.
+Since Neighbourhood goes into the model matrix as a factor with all it's levels one hot encoded, we see the model does not revert out a beta corresponding to the first level of the factor. This means, given all things constant, say if the average price of an apartment in neighborhood 3 is $100k, we can use the betas of other neighbourhoods to compare prices with neighborhood 3. Since beta for neighborhood 1 and 2 are both ~ -\$19 to -\$20k, we can say the average prices in those neighborhoods, given other covariates kept constant would be approximately \$80k and \$79k respectively.
 
 Thus there is a premium associated with houses in neighborhood 3.
 
-To summarize brick houses are approximately \$17k more expensive whereas neighbourhood 3 houses are roughly \$20k to\$22k more expensive.
+To summarize brick houses are approximately \$17k more expensive whereas neighbourhood 3 houses are roughly \$19k to\$20k more expensive.
 
 Please note - we're assuming linear relationship between price and number of rooms and bathrooms based on intuitive sense check despite the number of unique values in these variables is not too high.
 
@@ -1198,25 +1389,25 @@ Please note - we're assuming linear relationship between price and number of roo
 
 ```{r}
 #To check for premium for both bricked and neighborhood 3 house, we explore the interaction effects of the two variables
+set.seed(100)
 
-linearModel_housing <- lm(Price ~ Offers + SqFt + Bedrooms + Bathrooms + Brick:Nbhd , data = housing)
+linearModel_housing <- lm(Price ~ Offers + SqFt + Bedrooms + Bathrooms + Brick*Nbhd , data = housing)
 summary(linearModel_housing)
 
 
 ```
 
-From the above summary table, we see co-efficients for all combinations of the neighborhood and whether it's a brick house are negative and significant at significance level alpha = 0.05. The level of interest is bricked house in neighborhood 3, since it's the last category in our model matrix, it gets dropped off and the predicted price for this would be equal to the intercept value given all other covariates are zero.
+From the above summary table, we see co-efficients for combination of the neighborhood 3 and brick house are positive and significant at significance level alpha = 0.05. Here we're taking considering both main and interaction effects (Brick*Nbhd) ; using only interaction terms (Brick:Nbhd) might give us a better significance level since main effects might get distributed into interaction terms
 
-Since all other combinations are having negative significant betas, we can access that the there is a premium associated with Neighborhood 3 brick houses. 
+On average all brick houses are priced approximately -\$9k to \$12k less than brick houses in neighborhood 3. The main effects apprise us that other neighbourhood houses, not controlling for them being brick houses are prices \$17k to \18k lesser than neighborhood 3 houses.
 
-On avaerage all other houses are priced approximately -\$33k less than brick houses in neighborhood 3. Note this is not equal to the sum of differences we availed from LR without interactions (~\$37k to \$39k) and this is because the effect size of one variable say neighborhood depends upon the value of other variable - house being brick house.
+Note these differences are not equal to the sum of differences we availed from LR without interactions (~\$36k to \$37k) and this is because the effect size of one variable say neighborhood depends upon the value of other variable - house being brick house.
 
-Hence there's a premium on neighborhood 3 brick house, but there's no extra premium as in it's not greater than the summation of premiums from linear model without interactions.
+Hence there's a premium on neighborhood 3 brick house, but there's no extra premium as in it's not greater than the summation of premiums from linear model without interactio#### Part (4)
 
-#### Part (4)
+By definition in given problems, neighborhoods 1 and 2 are both traditional house settings. Seeing coefficients of these neighborhoods in previous regression result, we see betas for neighborhood 1 and 2 are pretty much similar and both categories do not have significant p-values. (Intercept and Nbhd2 both with p-val > 0.5)
 
-By definition in given problems, neighborhoods 1 and 2 are both traditional house settings. Seeing coefficients of these neighborhoods in previous regression result, we see betas for neighborhood 1 and 2 are pretty much similar (even though each category has significant p-value)
-So, while there is definite mathematical difference between betas for the two neighborhoods, visual inspection suggests the extent of this difference is not too different compared to other parameters such as house being brick-house or not.
+So, there is no definite mathematical difference between betas for the two neighborhoods suggesting combining the categories might be valid proposition.
 
 Hence we experiment with a model with neighborhoods 1 and 2 combined and accept it if it reduces the adjusted R-sq. This will help us avail a simpler model more robust to correctly predict the unseen test data.
 
@@ -1224,39 +1415,39 @@ Hence we experiment with a model with neighborhoods 1 and 2 combined and accept 
 
 housing$NewNbhd <- ifelse(housing$Nbhd == 3,1,0)
 
-linearModel_housing_new <- lm(Price ~  Offers + SqFt + Bedrooms + Bathrooms + Brick:NewNbhd , data = housing)
+linearModel_housing_new <- lm(Price ~  Offers + SqFt + Bedrooms + Bathrooms + Brick*NewNbhd , data = housing)
 summary(linearModel_housing_new)
 ```
 
-Given we do not see any improvement in adjusted R sq. and coefficients of neighborhood 1 and 2 were significant, it does not make sense to combine them into one category!
+Given we do see slight improvement in adjusted R sq. and coefficients of neighborhood 1 and 2 weren't significant, it does make sense to combine them into one category!
 
 ### Problem #3 : What causes what??
 
 #### Part (1)
 
-Different cities will have different co-efficients for their relationship of crime with respect to number of police and could potentially lead to averaging out the individual effects in case multiple cities are taken at once. For example, consider city 1 where regression line slope suggests that crime increases by certain rate with respect number of police. On the contrary city2 could have a regression line slope suggesting crime decreasing by the same rate with respect to the number of police. In case we plot these two cities data together, it results in cancellation of individual effects and the overall regression line for the two cities might result out with slop zero suggesting no relationship, which is definitely fallacious given our premise.
+Different cities will have different co-efficients for their relationship of crime with respect to High alert status and could potentially lead to averaging out the individual effects in case multiple cities are taken at once. For example, consider city 1 where regression line slope suggests that crime increases by certain rate with respect High alert. On the contrary city2 could have a regression line slope suggesting crime decreasing by the same rate with respect setting of the high alert. In case we plot these two cities data together, it results in cancellation of individual effects and the overall regression line for the two cities might result out with slop zero suggesting no relationship, which is definitely fallacious given our premise.
 
 
 #### Part (2)
 
-Given the issue is quantifying crime with respect to police is that wherever there is crime, only those places would be followed up by higher police personnel. It wasn't feasible to avail a comparison set of measuring crime rate with different number of police personnel while keeping all other variables constant since you wouldn't expect a large police personnel to be in an area without reasons other than crime.
+Given the issue is quantifying crime with respect to number of police personnel or higher security is that wherever there is crime, only those places would be followed up by higher number of police personnel. It wasn't feasible to avail a comparison set of measuring crime rate with different status of security settings while keeping all other variables constant since you wouldn't expect a large security need to be in an area without reasons other than crime.
 
-Researchers at UPenn first isolated a controlled demographic (geography of Washington DC) first where such a case would be possible. Given DC is considered high risk area to terror attacks, they have excess police personnel whenever there is an orange alert in the city. This means researchers are able to compare crime rates on days of normal vs increased police personnel in the city while keeping any possible confounding variables constant. This data would then be helpful in isolating the effect of police personnel on crime, given all other covariates such as geography, people on the street were checked to be almost constant.
+Researchers at UPenn first isolated a controlled demographic (geography of Washington DC) first where such a case would be possible. Given DC is considered high risk area to terror attacks, they have excess police personnel whenever there is an orange alert in the city. This means researchers are able to compare crime rates on days of normal vs High alert in the city while keeping any possible confounding variables constant. This data would then be helpful in isolating the effect of High alert status on crime, given all other covariates such as geography, people on the street were checked to be almost constant.
 
-In Table 2, we quantify this when we see daily crime in DC decreased by roughly 7.3 in when modeled while not controlling for metro activity. Whereas it decreased by 6 when controlled for Metro ridership as well. The second model provides more information for predicting crime rate and increases R-square (goodness of fit) from 0.14 to 0.17. The low values of R-sq also suggest that while excess police due to high alert and absence of people from metro ridership both have a significant impact in reducing the crime rate, these do not fully explain the crime rate owing to such low amounts of variance being explained by these variables.
+In Table 2, we quantify this when we see daily crime in DC decreased by roughly 7.3 on high alert status when modeled while not controlling for metro activity. Whereas it decreased by 6 on high alert status when controlled for Metro ridership as well. The second model provides more information for predicting crime rate and increases R-square (goodness of fit) from 0.14 to 0.17. The relatively low values of R-sq also suggest that while high alert status or increased security personnel and absence of people from metro ridership both have a significant impact in reducing the crime rate, these do not fully explain the crime rate owing to such low amounts of dependent variable's variance being explained.
 
 #### Part (3)
 
-The hypothesis behind metro ridership was that a higher amount of police personnel would discourage public outings, which in turn would discourage any criminals to target public in their criminal activities. Public targets being available might become the cause of difference in crime on normal vs excess police days. Owing to this it becomes essential to control for the people on the streets or 'access to criminal activity'
+The hypothesis behind metro ridership was that a higher security on high alert status would discourage public outings, which in turn would discourage any criminals to target public in their criminal activities. The difference in availability of public targets might become the cause of difference in crime on normal vs excess police days. Owing to this it becomes essential to control for the people on the streets or 'access to criminal activity'
 
-The researchers took the metro ridership as a proxy for people travelling/in public and being prone to criminal activity and validated that this activity was the same for normal vs excess police days. This approach ensures, if all other possible reasons that could have caused a change in crime rate are kept the same, whatever increase or decrease we see in crime rate on excess police days can be directly attributed to excess police presence!
+The researchers took the metro ridership as a proxy for people travelling or people in public and being prone to criminal activity and validated that this activity was the same for normal vs excess police days. This approach ensures, if all other possible reasons that could have caused a change in crime rate are kept the same, whatever increase or decrease we see in crime rate on excess police days can be directly attributed to excess police presence!
 
 In the table, the variable undergoes Log transformation to curtail the amount of deviations.
 
 
 #### Part (4)
 
-The table 4 gives out coefficients with High alert (Excess police personnel) interacting with the concerned demographic. We see two interaction terms in the coefficient table that say while effect of High alert is significant and is reducing crime rate in District 1, we can't say anything concrete about the High alert impact on crime rate in Other districts, given the associated p-val is not sufficiently low enough. 
+The table 4 gives out coefficients with High alert (High security personnel) interacting with the concerned demographic. We see two interaction terms in the coefficient table that say while effect of High alert is significant and is reducing crime rate in District 1, we can't say anything concrete about the High alert impact on crime rate in Other districts, given the associated p-val is not sufficiently low enough. 
 
 Adding one more covariate despite not giving out significant p-value reduces the absolute value of betas for the variables returning significant coefficients. The directionality of the coefficients in maintained as in the previous table.
 
@@ -1264,62 +1455,78 @@ Adding one more covariate despite not giving out significant p-value reduces the
 ### Problem #4 : Neural networks
 
 ```{r}
-set.seed(100)
 
+#Read in Boston data
 data <- Boston
 
-library(neuralnet)
-f <- as.formula(paste("crim ~", paste(names(train_scale)[!names(train_scale) %in% "crim"], collapse = " + ")))
-
+#Reproducibility
 set.seed(100)
-cv.error <- NULL
-k <- 10
 
-library(plyr) 
-pbar <- create_progress_bar('text')
-pbar$init(k)
+scaled_df <- as.data.frame(scale(data, center = TRUE, scale = TRUE))
+CV_RMSE <- data.table(Iteration=rep(0,225),Size=rep(0,225),Decay=rep(0,225),Test_RMSE=rep(0,225))
 
-for(i in 1:k){
-  
-    maxs <- apply(data, 2, max) 
-    mins <- apply(data, 2, min)
-    
-    scaled <- as.data.frame(scale(data, center = mins, scale = maxs - mins))
-
-    indexTrain <- sample(1:nrow(data),round(0.75*nrow(data)))
-    train.cv <- scaled[indexTrain,]
-    test.cv <- scaled[-indexTrain,]
-    
-    nn <- neuralnet(f,data=train.cv,hidden=c(6),linear.output=T)
-    plot(nn)
-    pr.nn <- compute(nn,test.cv[!names(test.cv) %in% crim])
-    print("dd")
-    pr.nn <- pr.nn$net.result*(max(data$medv)-min(data$medv))+min(data$medv)
-    
-    test.cv.r <- (test.cv$medv)*(max(data$medv)-min(data$medv))+min(data$medv)
-    
-    cv.error[i] <- sum((test.cv.r - pr.nn)^2)/nrow(test.cv)
-    
-    pbar$step()
+for(i in c(1:9)){
+  rmse_vec <- c()
+  sz_vec <- c()
+  dc_vec <- c()
+  temp_df <- data.table(Iteration=rep(0,20),Size=rep(0,20),Decay=rep(0,20),Test_RMSE=rep(0,20))
+  train_ind <- sample(seq_len(nrow(scaled_df)), size = 0.75)
+  train <- scaled_df[train_ind, ]
+  test <- scaled_df[-train_ind, ]
+  for(sz in seq(1,8,2)){
+    for(dc in c(0,0.1,0.01,0.001,0.0001)){
+      
+      #For loop CV implementation -- using linout for linear output units -- removing trace = F to reduce clutter
+      nnetModel = nnet(crim~.,scaled_df,size=sz,decay=dc,linout=T,trace=F)
+      #Predict out full data
+      predNN = predict(nnetModel,scaled_df)
+      FullRMSE = sqrt(mean((crim-predNN)^2))
+      cat("Neural net for iteration ",i," and size as ",sz," and decay as ",dc,"\n RMSE = ",FullRMSE ,"  \n\n")
+      #plot(predNN,scaled_df$crim)
+      
+      temp_df$Iteration <- i
+      sz_vec <- c(sz_vec,sz)
+      dc_vec <- c(dc_vec,dc)
+      rmse_vec <- c(rmse_vec,FullRMSE)
+      
+    }
+  }
+  temp_df$Iteration <- i
+  temp_df$Size <- sz_vec
+  temp_df$Decay <- dc_vec
+  temp_df$Test_RMSE <- rmse_vec
+  CV_RMSE <- as.data.table(rbind(CV_RMSE,temp_df))
 }
 
-mean(cv.error)
+CV_RMSE <- CV_RMSE[CV_RMSE$Iteration != 0]
 
-boxplot(cv.error,xlab='MSE CV',col='cyan',
-        border='blue',names='CV error (MSE)',
-        main='CV error (MSE) for NN',horizontal=TRUE)
+```
+
+Plotting Test Errors graphically
+
+```{r warning=FALSE}
+#Best decay and size parameters
+cat("Best decay and size parameters with minimum TEST RMSE : ")
+CV_RMSE[CV_RMSE$Test_RMSE == min(CV_RMSE$Test_RMSE)]
+
+ggplot(CV_RMSE,aes(x = log(Decay) , y = Test_RMSE)) + geom_point(color="salmon",alpha=0.65) + geom_smooth(method = "lm",se=F, size=0.2) + facet_wrap(facets = vars(Size))+theme_custom()
 
 ```
 
 
-```{r}
+### Problem #5 : Contribution to the project
 
 
+The topic we chose for our group project was a classic classification problem relevant in banking industry - Churn prediction of customers. We decided as a group on the data for the problems and aviled it from Kaggle. 
 
-```
+The data was clean and we didn't need to do any null value imputations or data cleaning as such. We decided to initially divide the work into EDA, modelling with logistic, Random forest and XGBoost. I took upon the  EDA work along with one more collegue and would later on contribute in the modelling part of the exercise as well.
 
-```{r}
+For EDA, I started out with the univariate analysis of our data. Libraries like Hmisc and DescTools helped me gauge a rough sense of data and give directions in which I wanted to pursue EDA. The idea was EDA should start formulating hypothesis of which variables were useful in modelling or if they needed any transformations etc.
+I did the univariate analysis of both categorical and continuous variables, completed the bivariate analysis with the ggpairs function to see scatterplots, correlations and relationship with dependent variable in one go. This helped us understand which columns needed to be specifically explored further to check if they're able to differentiate in churn or not.
 
+Collaborating with one of my collegues, we did more EDA that showed variables distributions being different for the two classes in question. I cleaned up all EDAs with the custom theme setting of ggplot and coerced all plots to be plotly using ggplotly to standardize the format of all plots in the deck. Post this I explored modelling logistic regression; one of my peers was searching for best logistic model manually by searching for the best AIC and was using the lrm function for logistic. I tried to leverage a stepwise glm implementation to check if despite the tunnel-visioning that stepwise suffers from, are we able to create a better AIC model than random search. It turned out that the implementation of glm vs lrm for same set of variables caused difference in test set results, which was an intersting find.
 
+My other collegues ran the RF and GBM models, but everyone so far was using train error metrics such as AIC, accuracy on their respective train-test split etc. Given we wanted to compare results from different experiments, I went through the literature to understand we need to use the same train-test split for all models, evaluate them on test set only and instead of using error metric as accuracy, AUC would be a better comparator. I edited the final code to create train-test split upfront, used mine and my colleagues' models and ran them on the train set, used out-of-sample test set to generate predictions on each of the models and generate performance metrics (using ROCR package) for us to be able to compare the models.
 
-```
+Amongst the performance metrics, I explored precision, recall, ROC curve, Area under ROC curve, F1 score for each of the models and formulated my understanding of situations of when we'd use different models such as Bagging vs Boosting which were essentially same in terms of AUC (probability threshold cut-off agnostic) but different in terms of Precision and Recall and offered best F1s at very different probability cut-offs. 
+
